@@ -1,0 +1,273 @@
+# Quality Pipeline Template
+# Code quality and analysis configurations
+
+# SonarQube analysis template
+.sonarqube-analysis:
+  stage: test
+  image: sonarsource/sonar-scanner-cli:latest
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - |
+      sonar-scanner \
+        -Dsonar.host.url=${SONAR_HOST_URL} \
+        -Dsonar.login=${SONAR_TOKEN} \
+        -Dsonar.projectKey=${CI_PROJECT_NAME} \
+        -Dsonar.projectVersion=${CI_COMMIT_SHORT_SHA} \
+        -Dsonar.sources=. \
+        -Dsonar.exclusions="**/*_test.go,**/vendor/**,**/node_modules/**,**/*.spec.js" \
+        -Dsonar.tests=. \
+        -Dsonar.test.inclusions="**/*_test.go,**/*.spec.js,**/*Test.java" \
+        -Dsonar.coverage.jacoco.xmlReportPaths="**/target/site/jacoco/jacoco.xml" \
+        -Dsonar.javascript.lcov.reportPaths="coverage/lcov.info" \
+        -Dsonar.go.coverage.reportPaths="coverage.out" \
+        -Dsonar.python.coverage.reportPaths="coverage.xml"
+  artifacts:
+    paths:
+      - .sonar/
+    expire_in: 1 week
+  allow_failure: false
+
+# Code coverage template
+.code-coverage:
+  stage: test
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  script:
+    - echo "Analyzing code coverage"
+  artifacts:
+    reports:
+      coverage:
+        path: coverage/cobertura-coverage.xml
+        coverage_format: cobertura
+    paths:
+      - coverage/
+      - "**/target/site/jacoco/"
+      - "**/build/reports/jacoco/"
+    expire_in: 1 month
+
+# Java code coverage
+.java-coverage:
+  extends: .code-coverage
+  image: maven:3.8.6-openjdk-11
+  script:
+    - mvn clean test jacoco:report jacoco:report-aggregate
+    - awk -F"," '{ instructions += $4 + $5; covered += $5 } END { print covered, "/", instructions, " instructions covered"; print 100*covered/instructions, "% covered" }' target/site/jacoco-aggregate/jacoco.csv
+  artifacts:
+    reports:
+      coverage:
+        path: target/site/jacoco-aggregate/jacoco.xml
+        coverage_format: cobertura
+
+# Code quality gate
+.quality-gate:
+  stage: test
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache bash curl jq
+  script:
+    - |
+      # Check SonarQube quality gate
+      QUALITY_GATE_STATUS=$(curl -s -u ${SONAR_TOKEN}: \
+        "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${CI_PROJECT_NAME}" \
+        | jq -r '.projectStatus.status')
+      
+      if [ "$QUALITY_GATE_STATUS" != "OK" ]; then
+        echo "Quality gate failed: $QUALITY_GATE_STATUS"
+        exit 1
+      fi
+      
+      echo "Quality gate passed"
+  needs:
+    - job: sonarqube-analysis
+      artifacts: false
+
+# Linting template
+.lint:
+  stage: test
+  script:
+    - echo "Running linters"
+  artifacts:
+    paths:
+      - lint-results/
+    expire_in: 1 week
+  allow_failure: true
+
+# ESLint for JavaScript/TypeScript
+.eslint:
+  extends: .lint
+  image: node:16-alpine
+  before_script:
+    - npm ci
+  script:
+    - npm run lint -- --format json --output-file eslint-report.json
+    - npm run lint -- --format stylish
+  artifacts:
+    paths:
+      - eslint-report.json
+
+# PyLint for Python
+.pylint:
+  extends: .lint
+  image: python:3.9-slim
+  before_script:
+    - pip install pylint
+  script:
+    - pylint --output-format=json > pylint-report.json || true
+    - pylint --output-format=colorized
+
+# Checkstyle for Java
+.checkstyle:
+  extends: .lint
+  image: maven:3.8.6-openjdk-11
+  script:
+    - mvn checkstyle:check
+  artifacts:
+    paths:
+      - target/checkstyle-result.xml
+
+# Code formatting check
+.format-check:
+  stage: test
+  script:
+    - echo "Checking code formatting"
+  allow_failure: true
+
+# Prettier check
+.prettier-check:
+  extends: .format-check
+  image: node:16-alpine
+  before_script:
+    - npm ci
+  script:
+    - npm run prettier:check
+
+# Black check for Python
+.black-check:
+  extends: .format-check
+  image: python:3.9-slim
+  before_script:
+    - pip install black
+  script:
+    - black --check .
+
+# Complexity analysis
+.complexity-analysis:
+  stage: test
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache bash
+  script:
+    - bash ${CI_PROJECT_DIR}/infrastructure/scripts/ci/complexity-analysis.sh
+  artifacts:
+    paths:
+      - complexity-report/
+    expire_in: 1 month
+
+# Documentation coverage
+.doc-coverage:
+  stage: test
+  script:
+    - echo "Checking documentation coverage"
+  artifacts:
+    paths:
+      - doc-coverage-report/
+    expire_in: 1 month
+
+# JavaDoc coverage
+.javadoc-coverage:
+  extends: .doc-coverage
+  image: maven:3.8.6-openjdk-11
+  script:
+    - mvn javadoc:javadoc
+    - mvn javadoc:test-javadoc
+  artifacts:
+    paths:
+      - target/site/apidocs/
+
+# Technical debt analysis
+.tech-debt:
+  stage: test
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache bash curl jq
+  script:
+    - |
+      # Get technical debt from SonarQube
+      TECH_DEBT=$(curl -s -u ${SONAR_TOKEN}: \
+        "${SONAR_HOST_URL}/api/measures/component?component=${CI_PROJECT_NAME}&metricKeys=sqale_index" \
+        | jq -r '.component.measures[0].value')
+      
+      echo "Technical Debt: $TECH_DEBT minutes"
+      
+      # Fail if technical debt exceeds threshold
+      if [ "$TECH_DEBT" -gt "${TECH_DEBT_THRESHOLD:-10000}" ]; then
+        echo "Technical debt exceeds threshold"
+        exit 1
+      fi
+
+# Bundle size analysis
+.bundle-size:
+  stage: test
+  image: node:16-alpine
+  before_script:
+    - npm ci
+  script:
+    - npm run build
+    - npx bundlesize
+  artifacts:
+    paths:
+      - bundle-size-report/
+    expire_in: 1 month
+
+# Performance budget check
+.performance-budget:
+  stage: test
+  image: sitespeedio/sitespeed.io:latest
+  script:
+    - sitespeed.io ${APPLICATION_URL} 
+      --budget.configPath=performance-budget.json
+      --outputFolder=performance-results
+  artifacts:
+    paths:
+      - performance-results/
+    expire_in: 1 month
+  allow_failure: true
+
+# Accessibility check
+.accessibility-check:
+  stage: test
+  image: node:16-alpine
+  before_script:
+    - npm install -g @axe-core/cli
+  script:
+    - axe ${APPLICATION_URL} --save accessibility-report.json
+  artifacts:
+    paths:
+      - accessibility-report.json
+    expire_in: 1 month
+  allow_failure: true
+
+# Quality report aggregation
+.quality-report:
+  stage: test
+  image: alpine:latest
+  needs:
+    - sonarqube-analysis
+    - code-coverage
+    - lint
+    - complexity-analysis
+  before_script:
+    - apk add --no-cache bash jq
+  script:
+    - bash ${CI_PROJECT_DIR}/infrastructure/scripts/ci/generate-quality-report.sh
+  artifacts:
+    reports:
+      junit: quality-report.xml
+    paths:
+      - quality-dashboard/
+    expire_in: 1 month

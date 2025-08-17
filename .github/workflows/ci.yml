@@ -1,0 +1,258 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20.x'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Frontend Tests
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/frontend
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: packages/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run type check
+        run: npm run typecheck
+      
+      - name: Run linter
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm test -- --coverage
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          directory: packages/frontend/coverage
+          flags: frontend
+  
+  # Backend Tests
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/backend
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: growth_ai_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: services/backend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Setup test database
+        run: |
+          cp .env.test .env
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/growth_ai_test
+      
+      - name: Run type check
+        run: npm run typecheck
+      
+      - name: Run linter
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm test -- --coverage
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/growth_ai_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_secret
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          directory: services/backend/coverage
+          flags: backend
+  
+  # AI Service Tests
+  ai-service-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-service
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      
+      - name: Run linter
+        run: |
+          ruff check .
+          black --check .
+      
+      - name: Run type check
+        run: mypy .
+      
+      - name: Run tests
+        run: pytest --cov=. --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          directory: services/ai-service
+          flags: ai-service
+  
+  # Security Scan
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high
+  
+  # Docker Build
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [frontend-test, backend-test, ai-service-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: packages/frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-frontend:latest
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push Backend
+        uses: docker/build-push-action@v4
+        with:
+          context: services/backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-backend:latest
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push AI Service
+        uses: docker/build-push-action@v4
+        with:
+          context: services/ai-service
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-ai-service:latest
+            ${{ secrets.DOCKER_USERNAME }}/growth-ai-ai-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  # Deploy to Staging
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://staging.growth-ai.com
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Add deployment script here
+          # kubectl apply -f k8s/staging/
+          # or
+          # ssh deploy@staging 'docker-compose pull && docker-compose up -d'

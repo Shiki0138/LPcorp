@@ -1,0 +1,225 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Force the following filetypes to have unix endings
+*.java text eol=lf
+*.xml text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.properties text eol=lf
+*.sql text eol=lf
+*.gradle text eol=lf
+Dockerfile text eol=lf
+
+# Force Windows batch scripts to have Windows endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Denote all files that are truly binary
+*.jar binary
+*.war binary
+*.ear binary
+*.zip binary
+*.tar.gz binary
+*.class binary
+*.so binary
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Java sources
+*.java text diff=java
+
+# Markdown files
+*.md text diff=markdown
+*.mdx text diff=markdown
+
+# Docker
+Dockerfile text
+.dockerignore text
+
+# Documentation
+*.adoc text
+*.textile text
+*.mustache text
+*.csv text
+*.tab text
+*.tsv text
+*.txt text
+AUTHORS text
+CHANGELOG text
+CHANGES text
+CONTRIBUTING text
+COPYING text
+copyright text
+COPYRIGHT text
+INSTALL text
+license text
+LICENSE text
+NEWS text
+readme text
+README text
+TODO text
+
+# Configuration files
+*.cnf text
+*.conf text
+*.config text
+.editorconfig text
+.env text
+.gitattributes text
+.gitconfig text
+.gitignore text
+.htaccess text
+*.lock text -diff
+package-lock.json text -diff
+*.toml text
+*.yaml text
+*.yml text
+browserslist text
+Makefile text
+makefile text
+
+# Scripts
+*.bash text eol=lf
+*.fish text eol=lf
+*.sh text eol=lf
+*.zsh text eol=lf
+
+# Serialization
+*.json text
+*.xml text
+
+# SQL
+*.sql text
+
+# Web
+*.css text diff=css
+*.htm text diff=html
+*.html text diff=html
+*.js text
+*.jsx text
+*.ts text
+*.tsx text
+*.scss text diff=css
+*.sass text
+*.less text
+*.vue text
+
+# Templates
+*.ejs text
+*.erb text
+*.hbs text
+*.jade text
+*.pug text
+*.twig text
+
+# Configs
+*.babelrc text
+*.browserslistrc text
+*.editorconfig text
+*.eslintrc text
+*.htmlhintrc text
+*.jscsrc text
+*.jshintrc text
+*.prettierrc text
+*.stylelintrc text
+Procfile text
+.slugignore text
+
+# Heroku
+Procfile text
+
+# Graphics
+*.ai binary
+*.bmp binary
+*.eps binary
+*.gif binary
+*.gifv binary
+*.ico binary
+*.jng binary
+*.jp2 binary
+*.jpg binary
+*.jpeg binary
+*.jpx binary
+*.jxr binary
+*.pdf binary
+*.png binary
+*.psb binary
+*.psd binary
+*.svgz binary
+*.tif binary
+*.tiff binary
+*.wbmp binary
+*.webp binary
+
+# Audio
+*.kar binary
+*.m4a binary
+*.mid binary
+*.midi binary
+*.mp3 binary
+*.ogg binary
+*.ra binary
+
+# Video
+*.3gpp binary
+*.3gp binary
+*.as binary
+*.asf binary
+*.asx binary
+*.avi binary
+*.fla binary
+*.flv binary
+*.m4v binary
+*.mng binary
+*.mov binary
+*.mp4 binary
+*.mpeg binary
+*.mpg binary
+*.ogv binary
+*.swc binary
+*.swf binary
+*.webm binary
+
+# Archives
+*.7z binary
+*.bz binary
+*.bz2 binary
+*.cab binary
+*.gem binary
+*.gz binary
+*.iso binary
+*.lzma binary
+*.rar binary
+*.tar binary
+*.xz binary
+*.zip binary
+
+# Fonts
+*.ttf binary
+*.eot binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+
+# Executables
+*.exe binary
+*.pyc binary
+
+# RC files (like .babelrc or .eslintrc)
+*.*rc text
+
+# Ignore files (like .npmignore or .gitignore)
+*.*ignore text
+
+# Linguist overrides
+*.sql linguist-detectable=true
+*.sql linguist-language=sql

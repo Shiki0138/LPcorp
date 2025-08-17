@@ -1,0 +1,200 @@
+# Build Pipeline Template
+# Reusable build configurations for different technologies
+
+# Maven build template
+.maven-build:
+  image: maven:3.8.6-openjdk-11
+  variables:
+    MAVEN_CLI_OPTS: "-s .m2/settings.xml --batch-mode"
+    MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  cache:
+    key: "${CI_PROJECT_NAME}-maven"
+    paths:
+      - .m2/repository/
+      - target/
+  script:
+    - mvn ${MAVEN_CLI_OPTS} clean package -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+      - target/*.war
+    expire_in: 1 hour
+
+# Gradle build template
+.gradle-build:
+  image: gradle:7.5.1-jdk11
+  variables:
+    GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  cache:
+    key: "${CI_PROJECT_NAME}-gradle"
+    paths:
+      - .gradle/
+      - build/
+  script:
+    - gradle clean build -x test
+  artifacts:
+    paths:
+      - build/libs/*.jar
+    expire_in: 1 hour
+
+# Node.js build template
+.node-build:
+  image: node:16-alpine
+  cache:
+    key: "${CI_PROJECT_NAME}-npm"
+    paths:
+      - node_modules/
+      - .npm/
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+      - build/
+    expire_in: 1 hour
+
+# Docker build template
+.docker-build:
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_TAG: "${CI_REGISTRY_IMAGE}/${SERVICE_NAME}:${CI_COMMIT_SHORT_SHA}"
+    IMAGE_TAG_LATEST: "${CI_REGISTRY_IMAGE}/${SERVICE_NAME}:latest"
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - docker build 
+      --cache-from ${IMAGE_TAG_LATEST}
+      --tag ${IMAGE_TAG}
+      --tag ${IMAGE_TAG_LATEST}
+      --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      --build-arg VCS_REF=${CI_COMMIT_SHA}
+      --build-arg VERSION=${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}
+      .
+    - docker push ${IMAGE_TAG}
+    - docker push ${IMAGE_TAG_LATEST}
+    # Generate SBOM
+    - docker sbom ${IMAGE_TAG} --format spdx-json > ${SERVICE_NAME}-sbom.json
+  after_script:
+    - docker logout ${CI_REGISTRY}
+  artifacts:
+    paths:
+      - ${SERVICE_NAME}-sbom.json
+    reports:
+      sbom:
+        - ${SERVICE_NAME}-sbom.json
+
+# Multi-arch Docker build template
+.docker-multiarch-build:
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CLI_EXPERIMENTAL: enabled
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+    - docker buildx create --name multi-arch-builder --use
+    - docker buildx inspect --bootstrap
+  script:
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --cache-from ${CI_REGISTRY_IMAGE}/${SERVICE_NAME}:latest \
+        --tag ${CI_REGISTRY_IMAGE}/${SERVICE_NAME}:${CI_COMMIT_SHORT_SHA} \
+        --tag ${CI_REGISTRY_IMAGE}/${SERVICE_NAME}:latest \
+        --push \
+        .
+
+# Python build template
+.python-build:
+  image: python:3.9-slim
+  variables:
+    PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
+  cache:
+    key: "${CI_PROJECT_NAME}-pip"
+    paths:
+      - .cache/pip
+      - venv/
+  before_script:
+    - python -m venv venv
+    - source venv/bin/activate
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - python setup.py bdist_wheel
+  artifacts:
+    paths:
+      - dist/*.whl
+    expire_in: 1 hour
+
+# Go build template
+.go-build:
+  image: golang:1.19-alpine
+  variables:
+    GO111MODULE: "on"
+    GOPROXY: "https://proxy.golang.org"
+  cache:
+    key: "${CI_PROJECT_NAME}-go"
+    paths:
+      - .go/pkg/mod/
+  before_script:
+    - apk add --no-cache git make
+  script:
+    - go mod download
+    - go build -v -o ${SERVICE_NAME} ./cmd/${SERVICE_NAME}
+  artifacts:
+    paths:
+      - ${SERVICE_NAME}
+    expire_in: 1 hour
+
+# Rust build template
+.rust-build:
+  image: rust:latest
+  cache:
+    key: "${CI_PROJECT_NAME}-cargo"
+    paths:
+      - target/
+      - .cargo/
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/${SERVICE_NAME}
+    expire_in: 1 hour
+
+# Build optimization template
+.optimized-build:
+  variables:
+    DOCKER_BUILDKIT: 1
+  parallel:
+    matrix:
+      - OPTIMIZATION: ["size", "speed"]
+  script:
+    - |
+      if [ "$OPTIMIZATION" = "size" ]; then
+        echo "Building for minimal size..."
+        export OPTIMIZATION_FLAGS="--build-arg OPTIMIZATION=size"
+      else
+        echo "Building for maximum speed..."
+        export OPTIMIZATION_FLAGS="--build-arg OPTIMIZATION=speed"
+      fi
+    - docker build ${OPTIMIZATION_FLAGS} -t ${IMAGE_TAG}-${OPTIMIZATION} .
+
+# Native image build template (GraalVM)
+.native-image-build:
+  image: ghcr.io/graalvm/graalvm-ce:latest
+  script:
+    - gu install native-image
+    - mvn package -Pnative
+  artifacts:
+    paths:
+      - target/${SERVICE_NAME}
+    expire_in: 1 hour

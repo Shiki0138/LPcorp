@@ -1,0 +1,169 @@
+# User Service CI/CD Pipeline
+# Extends from root pipeline configuration
+
+variables:
+  SERVICE_NAME: "user-service"
+  SERVICE_PORT: "8081"
+  DATABASE_NAME: "userdb"
+
+# Service-specific compile
+compile:user-service:
+  extends: .maven-build
+  stage: compile
+  only:
+    changes:
+      - services/user-service/**/*
+      - pom.xml
+  script:
+    - cd services/user-service
+    - mvn clean compile -DskipTests
+
+# Service-specific unit tests
+test:unit:user-service:
+  extends: .maven-unit-test
+  stage: test
+  needs: ["compile:user-service"]
+  only:
+    changes:
+      - services/user-service/**/*
+  script:
+    - cd services/user-service
+    - mvn test jacoco:report
+    - bash ../../infrastructure/scripts/ci/coverage-check.sh 80
+
+# Service-specific integration tests
+test:integration:user-service:
+  extends: .maven-integration-test
+  stage: test
+  needs: ["test:unit:user-service"]
+  services:
+    - postgres:13
+    - redis:6
+  variables:
+    POSTGRES_DB: "${DATABASE_NAME}"
+    POSTGRES_USER: "testuser"
+    POSTGRES_PASSWORD: "testpass"
+    SPRING_PROFILES_ACTIVE: "test"
+  only:
+    changes:
+      - services/user-service/**/*
+  script:
+    - cd services/user-service
+    - mvn verify -Pintegration-test
+
+# Service-specific Docker build
+build:docker:user-service:
+  extends: .docker-build
+  stage: build
+  needs: ["test:integration:user-service"]
+  only:
+    changes:
+      - services/user-service/**/*
+  before_script:
+    - cd services/user-service
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+
+# Service-specific security scans
+security:sast:user-service:
+  extends: .gitlab-sast
+  stage: security-scan
+  needs: ["build:docker:user-service"]
+  only:
+    changes:
+      - services/user-service/**/*
+
+security:dependency:user-service:
+  extends: .owasp-dependency-check
+  stage: security-scan
+  needs: ["build:docker:user-service"]
+  only:
+    changes:
+      - services/user-service/**/*
+  script:
+    - cd services/user-service
+    - dependency-check.sh --project "${SERVICE_NAME}" --scan .
+
+# Service-specific deployments
+deploy:dev:user-service:
+  extends: .helm-deploy
+  stage: deploy-dev
+  needs: ["security:sast:user-service", "security:dependency:user-service"]
+  environment:
+    name: development/user-service
+    url: https://user-service-dev.lp-platform.com
+  variables:
+    MIN_REPLICAS: 2
+    MAX_REPLICAS: 5
+    MEMORY_REQUEST: "512Mi"
+    MEMORY_LIMIT: "1Gi"
+    CPU_REQUEST: "250m"
+    CPU_LIMIT: "1000m"
+  only:
+    refs:
+      - develop
+    changes:
+      - services/user-service/**/*
+      - charts/user-service/**/*
+
+deploy:staging:user-service:
+  extends: .helm-deploy
+  stage: deploy-staging
+  needs: ["deploy:dev:user-service"]
+  environment:
+    name: staging/user-service
+    url: https://user-service-staging.lp-platform.com
+  variables:
+    MIN_REPLICAS: 3
+    MAX_REPLICAS: 10
+  only:
+    refs:
+      - main
+    changes:
+      - services/user-service/**/*
+      - charts/user-service/**/*
+  when: manual
+
+deploy:prod:user-service:
+  extends: .helm-deploy
+  stage: deploy-prod
+  needs: ["deploy:staging:user-service"]
+  environment:
+    name: production/user-service
+    url: https://api.lp-platform.com/users
+  variables:
+    MIN_REPLICAS: 5
+    MAX_REPLICAS: 20
+  only:
+    - tags
+  when: manual
+
+# Service-specific quality checks
+quality:sonar:user-service:
+  extends: .sonarqube-analysis
+  stage: test
+  needs: ["test:unit:user-service"]
+  only:
+    changes:
+      - services/user-service/**/*
+  variables:
+    SONAR_SOURCES: "services/user-service/src"
+    SONAR_TESTS: "services/user-service/src/test"
+    SONAR_JAVA_BINARIES: "services/user-service/target/classes"
+    SONAR_COVERAGE_JACOCO_XML_REPORT_PATHS: "services/user-service/target/site/jacoco/jacoco.xml"
+
+# Service-specific performance tests
+test:performance:user-service:
+  extends: .performance-test
+  stage: integration-test
+  needs: ["deploy:dev:user-service"]
+  variables:
+    TARGET_URL: "https://user-service-dev.lp-platform.com"
+    TEST_SCRIPT: "user-service-load.js"
+    VUS: 50
+    DURATION: "5m"
+  only:
+    refs:
+      - develop
+    changes:
+      - services/user-service/**/*
+      - tests/performance/user-service-load.js
