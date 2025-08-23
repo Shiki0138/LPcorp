@@ -1,0 +1,171 @@
+#!/bin/bash
+
+# Pre-push hook for running tests
+# Make this file executable: chmod +x .git/hooks/pre-push
+
+set -e
+
+echo "Running pre-push checks..."
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Get the remote and branch
+remote="$1"
+url="$2"
+
+# Determine which commits are being pushed
+z40=0000000000000000000000000000000000000000
+while read local_ref local_sha remote_ref remote_sha
+do
+    if [ "$local_sha" = $z40 ]; then
+        # Handle delete
+        :
+    else
+        if [ "$remote_sha" = $z40 ]; then
+            # New branch, examine all commits
+            range="$local_sha"
+        else
+            # Update to existing branch, examine new commits
+            range="$remote_sha..$local_sha"
+        fi
+        
+        # Check for WIP commits
+        WIP_COMMITS=$(git rev-list -n 1 --grep '^WIP' --grep '^wip' --grep '^DONT-PUSH' "$range" 2>/dev/null || true)
+        if [ ! -z "$WIP_COMMITS" ]; then
+            echo -e "${RED}✗ Found WIP commits:${NC}"
+            git log --oneline "$range" | grep -E '^[a-f0-9]+ (WIP|wip|DONT-PUSH)'
+            echo -e "${RED}Please squash or amend these commits before pushing.${NC}"
+            exit 1
+        fi
+    fi
+done
+
+# Run full test suite
+echo "Running full test suite..."
+
+if [ -f "gradlew" ]; then
+    echo "Running Gradle build and tests..."
+    ./gradlew clean build test --parallel || BUILD_FAILED=1
+elif [ -f "pom.xml" ] && command_exists mvn; then
+    echo "Running Maven build and tests..."
+    mvn clean verify || BUILD_FAILED=1
+else
+    echo -e "${YELLOW}Warning: No build tool found (Gradle or Maven)${NC}"
+fi
+
+if [ "$BUILD_FAILED" = "1" ]; then
+    echo -e "${RED}✗ Build or tests failed${NC}"
+    exit 1
+fi
+
+# Run integration tests if available
+if [ -f "gradlew" ] && ./gradlew tasks --all | grep -q integrationTest; then
+    echo "Running integration tests..."
+    ./gradlew integrationTest || INTEGRATION_FAILED=1
+elif [ -f "pom.xml" ] && command_exists mvn && [ -d "src/test/integration" ]; then
+    echo "Running integration tests..."
+    mvn verify -P integration-test || INTEGRATION_FAILED=1
+fi
+
+if [ "$INTEGRATION_FAILED" = "1" ]; then
+    echo -e "${RED}✗ Integration tests failed${NC}"
+    exit 1
+fi
+
+# Check code coverage
+if [ -f "gradlew" ] && ./gradlew tasks --all | grep -q jacocoTestReport; then
+    echo "Generating code coverage report..."
+    ./gradlew jacocoTestReport
+    
+    # Check if coverage meets minimum threshold
+    if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+        # Extract coverage percentage (this is a simplified check)
+        COVERAGE=$(grep -oP 'coverage="[0-9.]+' build/reports/jacoco/test/jacocoTestReport.xml | head -1 | cut -d'"' -f2)
+        if [ ! -z "$COVERAGE" ]; then
+            echo "Code coverage: ${COVERAGE}%"
+            # You can add a minimum coverage check here
+            # MIN_COVERAGE=80
+            # if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
+            #     echo -e "${RED}✗ Code coverage ${COVERAGE}% is below minimum ${MIN_COVERAGE}%${NC}"
+            #     exit 1
+            # fi
+        fi
+    fi
+elif [ -f "pom.xml" ] && command_exists mvn; then
+    mvn jacoco:report 2>/dev/null || true
+fi
+
+# Run security checks if available
+if command_exists dependency-check && [ -f "dependency-check-suppression.xml" ]; then
+    echo "Running OWASP dependency check..."
+    dependency-check --project "$(basename $(pwd))" --scan . --suppression dependency-check-suppression.xml || SECURITY_FAILED=1
+    
+    if [ "$SECURITY_FAILED" = "1" ]; then
+        echo -e "${YELLOW}Warning: Security vulnerabilities found in dependencies${NC}"
+        echo "Check the dependency-check-report.html for details"
+    fi
+fi
+
+# Check for sensitive data
+echo "Checking for sensitive data..."
+SENSITIVE_PATTERNS="password=|passwd=|pwd=|secret=|api[_-]?key=|private[_-]?key=|token=|PRIVATE KEY|AUTH_TOKEN|AWS_SECRET"
+SENSITIVE_FILES=$(git diff --name-only "$remote_sha..$local_sha" 2>/dev/null | xargs -I {} grep -l -i -E "$SENSITIVE_PATTERNS" {} 2>/dev/null || true)
+
+if [ ! -z "$SENSITIVE_FILES" ]; then
+    echo -e "${YELLOW}Warning: Possible sensitive data found in:${NC}"
+    echo "$SENSITIVE_FILES"
+    echo -e "${YELLOW}Please review these files before pushing.${NC}"
+    read -p "Continue with push? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+# Check branch protection rules
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+PROTECTED_BRANCHES="main master production release"
+
+for branch in $PROTECTED_BRANCHES; do
+    if [ "$CURRENT_BRANCH" = "$branch" ]; then
+        echo -e "${YELLOW}Warning: You are pushing directly to protected branch '$branch'${NC}"
+        read -p "Are you sure you want to continue? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+done
+
+# Run linting
+if [ -f "gradlew" ] && ./gradlew tasks --all | grep -q checkstyleMain; then
+    echo "Running linting checks..."
+    ./gradlew checkstyleMain checkstyleTest || LINT_FAILED=1
+elif [ -f "pom.xml" ] && command_exists mvn; then
+    mvn checkstyle:check 2>/dev/null || LINT_FAILED=1
+fi
+
+if [ "$LINT_FAILED" = "1" ]; then
+    echo -e "${YELLOW}Warning: Linting issues found${NC}"
+fi
+
+# Final check for large files
+echo "Checking for large files..."
+LARGE_FILES=$(git diff --name-only "$remote_sha..$local_sha" 2>/dev/null | xargs -I {} find {} -size +1M 2>/dev/null || true)
+if [ ! -z "$LARGE_FILES" ]; then
+    echo -e "${YELLOW}Warning: Large files (>1MB) detected:${NC}"
+    echo "$LARGE_FILES"
+    echo -e "${YELLOW}Consider using Git LFS for these files.${NC}"
+fi
+
+echo -e "${GREEN}✓ All pre-push checks passed!${NC}"
+exit 0

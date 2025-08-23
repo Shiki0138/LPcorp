@@ -1,0 +1,177 @@
+# RBAC Configuration for Enterprise System
+---
+# Developer Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: development
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "pods/exec", "services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]  # Read-only for secrets
+---
+# QA Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: qa-engineer
+  namespace: staging
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]  # Can run test jobs
+---
+# Production Operator Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: production-operator
+  namespace: production
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "services", "configmaps", "events"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+  verbs: ["get", "list", "watch", "update", "patch"]  # Can scale but not delete
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+---
+# SRE Admin Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sre-admin
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+- nonResourceURLs: ["*"]
+  verbs: ["*"]
+---
+# Infrastructure Admin Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: infrastructure-admin
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "persistentvolumes"]
+  verbs: ["*"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["policy"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+# Service Account for CI/CD
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cicd-deployer
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cicd-deployer
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["configmaps", "secrets", "services"]
+  verbs: ["get", "list", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+# Role Bindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-binding
+  namespace: development
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: developers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: qa-binding
+  namespace: staging
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: qa-engineer
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: qa-team
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: production-operator-binding
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: production-operator
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: operations
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sre-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sre-admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: sre-team
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cicd-deployer-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cicd-deployer
+subjects:
+- kind: ServiceAccount
+  name: cicd-deployer
+  namespace: default

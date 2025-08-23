@@ -1,0 +1,212 @@
+# Staging environment values
+global:
+  environment: staging
+  domain: staging.enterprise.com
+  
+services:
+  userService:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 150m
+        memory: 384Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      
+  orderService:
+    replicaCount: 3
+    resources:
+      requests:
+        cpu: 300m
+        memory: 768Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 20
+      
+  productService:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 150m
+        memory: 384Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 15
+      
+  paymentService:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 300m
+        memory: 768Mi
+      limits:
+        cpu: 1500m
+        memory: 2Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+    pciCompliance: true  # Full compliance in staging
+    
+postgresql:
+  primary:
+    persistence:
+      size: 50Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+  readReplicas:
+    replicaCount: 1
+    persistence:
+      size: 50Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+        
+redis:
+  master:
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  replica:
+    replicaCount: 1
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  sentinel:
+    enabled: true
+    replicaCount: 3
+    
+kafka:
+  replicaCount: 3
+  persistence:
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  zookeeper:
+    replicaCount: 3
+    persistence:
+      size: 10Gi
+      
+kong:
+  proxy:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+      
+monitoring:
+  prometheus:
+    retention: 14d
+    storageSize: 50Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 4Gi
+  grafana:
+    persistence:
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        
+ingress:
+  hosts:
+    - host: api.staging.enterprise.com
+      paths:
+        - path: /api/v1/users
+          pathType: Prefix
+          service: user-service
+        - path: /api/v1/orders
+          pathType: Prefix
+          service: order-service
+        - path: /api/v1/products
+          pathType: Prefix
+          service: product-service
+        - path: /api/v1/payments
+          pathType: Prefix
+          service: payment-service
+  tls:
+    - secretName: api-staging-tls
+      hosts:
+        - api.staging.enterprise.com
+        
+networkPolicies:
+  enabled: true
+  
+resourceQuotas:
+  enabled: true
+  requests:
+    cpu: "500"
+    memory: "1000Gi"
+  limits:
+    cpu: "1000"
+    memory: "2000Gi"
+    
+nodeSelector:
+  workload: application
+  
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - enterprise-system
+          topologyKey: kubernetes.io/hostname

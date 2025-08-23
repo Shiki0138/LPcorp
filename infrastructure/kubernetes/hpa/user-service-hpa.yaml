@@ -1,0 +1,93 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa
+  namespace: production
+  labels:
+    app: user-service
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  # CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metric - requests per second
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  # Custom metric - response time
+  - type: Pods
+    pods:
+      metric:
+        name: http_request_duration_p95
+      target:
+        type: AverageValue
+        averageValue: "500m"  # 500ms
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+      - type: Percent
+        value: 10  # Scale down by 10%
+        periodSeconds: 60
+      - type: Pods
+        value: 1   # Or remove 1 pod
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that scales down slower
+    scaleUp:
+      stabilizationWindowSeconds: 60  # 1 minute
+      policies:
+      - type: Percent
+        value: 100  # Double the pods
+        periodSeconds: 60
+      - type: Pods
+        value: 4    # Or add 4 pods
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that scales up faster
+---
+# Vertical Pod Autoscaler for right-sizing
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: user-service-vpa
+  namespace: production
+  labels:
+    app: user-service
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  updatePolicy:
+    updateMode: "Off"  # Only recommend, don't auto-apply
+  resourcePolicy:
+    containerPolicies:
+    - containerName: user-service
+      minAllowed:
+        cpu: 100m
+        memory: 256Mi
+      maxAllowed:
+        cpu: 4000m
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]

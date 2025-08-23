@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: production
+  labels:
+    app: user-service
+    component: backend
+data:
+  # Database configuration
+  database.host: "postgres-primary.production.svc.cluster.local"
+  database.port: "5432"
+  database.name: "users_db"
+  database.pool.size: "20"
+  database.pool.timeout: "30s"
+  
+  # Redis configuration
+  redis.host: "redis-master.production.svc.cluster.local"
+  redis.port: "6379"
+  redis.db: "0"
+  redis.pool.size: "50"
+  redis.timeout: "5s"
+  
+  # Service configuration
+  service.port: "8001"
+  service.metrics.port: "9090"
+  service.timeout.read: "30s"
+  service.timeout.write: "30s"
+  service.timeout.idle: "120s"
+  
+  # Authentication configuration
+  auth.token.expiry: "24h"
+  auth.refresh.expiry: "7d"
+  auth.max.sessions: "5"
+  
+  # Rate limiting
+  ratelimit.requests.per.minute: "1000"
+  ratelimit.burst: "2000"
+  
+  # Feature flags
+  feature.two_factor_auth: "true"
+  feature.social_login: "true"
+  feature.password_policy: "strong"
+  
+  # Application configuration
+  app.config.yaml: |
+    server:
+      port: 8001
+      host: 0.0.0.0
+      graceful_shutdown_timeout: 30s
+    
+    logging:
+      level: info
+      format: json
+      output: stdout
+    
+    tracing:
+      enabled: true
+      service_name: user-service
+      endpoint: http://tempo.monitoring.svc.cluster.local:4317
+      sample_rate: 0.1
+    
+    metrics:
+      enabled: true
+      port: 9090
+      path: /metrics
+    
+    health:
+      liveness_path: /health/live
+      readiness_path: /health/ready
+      startup_path: /health/startup

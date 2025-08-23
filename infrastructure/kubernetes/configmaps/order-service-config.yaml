@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-service-config
+  namespace: production
+  labels:
+    app: order-service
+    component: backend
+data:
+  # Database configuration
+  database.host: "postgres-primary.production.svc.cluster.local"
+  database.port: "5432"
+  database.name: "orders_db"
+  database.pool.size: "30"
+  database.pool.timeout: "30s"
+  
+  # Redis configuration
+  redis.host: "redis-master.production.svc.cluster.local"
+  redis.port: "6379"
+  redis.db: "1"
+  redis.pool.size: "100"
+  redis.timeout: "5s"
+  
+  # Kafka configuration
+  kafka.brokers: "kafka-0.kafka-headless.production.svc.cluster.local:9092,kafka-1.kafka-headless.production.svc.cluster.local:9092,kafka-2.kafka-headless.production.svc.cluster.local:9092"
+  kafka.topic.orders: "order-events"
+  kafka.topic.order_status: "order-status-updates"
+  kafka.consumer.group: "order-service-consumer"
+  kafka.producer.retries: "3"
+  kafka.producer.batch.size: "16384"
+  
+  # Service configuration
+  service.port: "8002"
+  service.metrics.port: "9090"
+  service.timeout.read: "60s"
+  service.timeout.write: "60s"
+  service.timeout.idle: "300s"
+  
+  # Circuit breaker configuration
+  circuitbreaker.timeout: "5s"
+  circuitbreaker.max_requests: "100"
+  circuitbreaker.interval: "60s"
+  circuitbreaker.ratio: "0.6"
+  
+  # Retry configuration
+  retry.max_attempts: "3"
+  retry.initial_interval: "100ms"
+  retry.max_interval: "2s"
+  retry.multiplier: "2"
+  
+  # Order processing
+  order.max_items_per_order: "100"
+  order.expiry_duration: "24h"
+  order.status_check_interval: "5m"
+  
+  # Application configuration
+  app.config.yaml: |
+    server:
+      port: 8002
+      host: 0.0.0.0
+      graceful_shutdown_timeout: 60s
+    
+    database:
+      max_idle_conns: 10
+      max_open_conns: 30
+      conn_max_lifetime: 1h
+    
+    kafka:
+      version: "2.8.0"
+      compression: "snappy"
+      idempotent: true
+      max_in_flight: 5
+    
+    logging:
+      level: info
+      format: json
+      output: stdout
+    
+    tracing:
+      enabled: true
+      service_name: order-service
+      endpoint: http://tempo.monitoring.svc.cluster.local:4317
+      sample_rate: 0.1
+    
+    metrics:
+      enabled: true
+      port: 9090
+      path: /metrics

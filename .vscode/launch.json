@@ -1,0 +1,124 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch Eureka Server",
+            "request": "launch",
+            "mainClass": "com.microservices.eureka.server.EurekaServerApplication",
+            "projectName": "eureka-server",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch Config Server",
+            "request": "launch",
+            "mainClass": "com.microservices.config.server.ConfigServerApplication",
+            "projectName": "config-server",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch API Gateway",
+            "request": "launch",
+            "mainClass": "com.microservices.api.gateway.ApiGatewayApplication",
+            "projectName": "api-gateway",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch Auth Service",
+            "request": "launch",
+            "mainClass": "com.microservices.auth.service.AuthServiceApplication",
+            "projectName": "auth-service",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch User Service",
+            "request": "launch",
+            "mainClass": "com.microservices.user.service.UserServiceApplication",
+            "projectName": "user-service",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch Product Service",
+            "request": "launch",
+            "mainClass": "com.microservices.product.service.ProductServiceApplication",
+            "projectName": "product-service",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch Order Service",
+            "request": "launch",
+            "mainClass": "com.microservices.order.service.OrderServiceApplication",
+            "projectName": "order-service",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Launch Notification Service",
+            "request": "launch",
+            "mainClass": "com.microservices.notification.service.NotificationServiceApplication",
+            "projectName": "notification-service",
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Debug Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "Debug Tests",
+            "request": "launch",
+            "mainClass": "",
+            "preLaunchTask": "test"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Launch All Services",
+            "configurations": [
+                "Launch Eureka Server",
+                "Launch Config Server",
+                "Launch API Gateway",
+                "Launch Auth Service",
+                "Launch User Service",
+                "Launch Product Service",
+                "Launch Order Service",
+                "Launch Notification Service"
+            ],
+            "stopAll": true
+        },
+        {
+            "name": "Launch Core Services",
+            "configurations": [
+                "Launch Eureka Server",
+                "Launch Config Server",
+                "Launch API Gateway",
+                "Launch Auth Service"
+            ],
+            "stopAll": true
+        }
+    ]
+}

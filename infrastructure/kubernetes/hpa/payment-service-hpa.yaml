@@ -1,0 +1,71 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+  namespace: production
+  labels:
+    app: payment-service
+    component: backend
+    compliance: pci
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 3  # Minimum for HA
+  maxReplicas: 15  # Limited scaling for payment service
+  metrics:
+  # CPU utilization (lower threshold for payment service)
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60  # Lower threshold
+  # Memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Payment processing queue depth
+  - type: External
+    external:
+      metric:
+        name: payment_queue_depth
+        selector:
+          matchLabels:
+            service: payment-service
+      target:
+        type: Value
+        value: "100"  # Max 100 pending payments per pod
+  # Transaction processing time
+  - type: Pods
+    pods:
+      metric:
+        name: payment_processing_time_p95
+      target:
+        type: AverageValue
+        averageValue: "2000m"  # 2 seconds
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 900  # 15 minutes - very conservative
+      policies:
+      - type: Percent
+        value: 10  # Only 10% at a time
+        periodSeconds: 300  # Every 5 minutes
+      - type: Pods
+        value: 1   # Or just 1 pod
+        periodSeconds: 300
+      selectPolicy: Min  # Choose the slower option
+    scaleUp:
+      stabilizationWindowSeconds: 120  # 2 minutes
+      policies:
+      - type: Percent
+        value: 50  # 50% increase
+        periodSeconds: 60
+      - type: Pods
+        value: 2   # Or add 2 pods
+        periodSeconds: 60
+      selectPolicy: Max

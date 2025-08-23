@@ -1,0 +1,370 @@
+# Prometheus Configuration
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'production'
+        region: 'us-east-1'
+    
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager:9093
+    
+    # Rule files
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+    
+    # Scrape configurations
+    scrape_configs:
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+        - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: default;kubernetes;https
+      
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+        - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+        - target_label: __address__
+          replacement: kubernetes.default.svc:443
+        - source_labels: [__meta_kubernetes_node_name]
+          regex: (.+)
+          target_label: __metrics_path__
+          replacement: /api/v1/nodes/${1}/proxy/metrics
+      
+      # Kubernetes pods
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+      
+      # Kubernetes services
+      - job_name: 'kubernetes-services'
+        kubernetes_sd_configs:
+        - role: service
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+          action: keep
+          regex: true
+        - source_labels: [__address__]
+          target_label: __param_target
+        - target_label: __address__
+          replacement: blackbox-exporter:9115
+        - source_labels: [__param_target]
+          target_label: instance
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_service_name]
+          target_label: kubernetes_name
+      
+      # Custom application metrics
+      - job_name: 'application-metrics'
+        kubernetes_sd_configs:
+        - role: endpoints
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_label_app]
+          action: keep
+          regex: (user-service|order-service|product-service|payment-service)
+        - source_labels: [__meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: metrics
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_service_name]
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: monitoring
+data:
+  alerts.yml: |
+    groups:
+    - name: service_alerts
+      interval: 30s
+      rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+          /
+          sum(rate(http_requests_total[5m])) by (service)
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has error rate of {{ $value | humanizePercentage }}"
+      
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency on {{ $labels.service }}"
+          description: "Service {{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}"
+      
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+    
+    - name: infrastructure_alerts
+      interval: 30s
+      rules:
+      - alert: NodeMemoryPressure
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Node memory pressure on {{ $labels.instance }}"
+          description: "Node {{ $labels.instance }} memory usage is {{ $value | humanizePercentage }}"
+      
+      - alert: PersistentVolumeSpaceLow
+        expr: |
+          (1 - kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "PV space running low"
+          description: "PV {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+      
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Kafka consumer lag is high"
+          description: "Consumer group {{ $labels.consumer_group }} has lag of {{ $value }} messages on topic {{ $labels.topic }}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        fsGroup: 65534
+        runAsUser: 65534
+        runAsNonRoot: true
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.45.0
+        args:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus/'
+        - '--storage.tsdb.retention.time=30d'
+        - '--storage.tsdb.retention.size=50GB'
+        - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+        - '--web.console.templates=/usr/share/prometheus/consoles'
+        - '--web.enable-lifecycle'
+        ports:
+        - name: web
+          containerPort: 9090
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 8Gi
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus/prometheus.yml
+          subPath: prometheus.yml
+        - name: prometheus-rules
+          mountPath: /etc/prometheus/rules
+        - name: prometheus-storage
+          mountPath: /prometheus
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: web
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: web
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      nodeSelector:
+        workload: system
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - prometheus
+            topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: system
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-rules
+        configMap:
+          name: prometheus-rules
+      - name: prometheus-storage
+        persistentVolumeClaim:
+          claimName: prometheus-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
+    protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-encrypted
+  resources:
+    requests:
+      storage: 100Gi

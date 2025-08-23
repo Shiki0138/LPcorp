@@ -1,0 +1,811 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Enterprise Data Models",
+  "description": "Core data model schemas for the enterprise system",
+  "definitions": {
+    "Customer": {
+      "type": "object",
+      "description": "Customer entity representing a registered user",
+      "required": ["id", "email", "firstName", "lastName", "status", "tier", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique customer identifier"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Customer email address (unique)"
+        },
+        "firstName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Customer first name"
+        },
+        "lastName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Customer last name"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "pattern": "^\\+?[1-9]\\d{1,14}$",
+          "description": "E.164 format phone number"
+        },
+        "dateOfBirth": {
+          "type": "string",
+          "format": "date",
+          "description": "Customer date of birth"
+        },
+        "status": {
+          "$ref": "#/definitions/CustomerStatus"
+        },
+        "tier": {
+          "$ref": "#/definitions/CustomerTier"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "verifiedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional customer metadata"
+        }
+      },
+      "indexes": [
+        {"fields": ["email"], "unique": true},
+        {"fields": ["status", "tier"]},
+        {"fields": ["createdAt"]}
+      ]
+    },
+    
+    "Order": {
+      "type": "object",
+      "description": "Order entity representing a customer purchase",
+      "required": ["id", "orderNumber", "customerId", "status", "totalAmount", "currency", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderNumber": {
+          "type": "string",
+          "pattern": "^ORD-[0-9]{10}$",
+          "description": "Human-readable order number"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference to customer"
+        },
+        "status": {
+          "$ref": "#/definitions/OrderStatus"
+        },
+        "subTotal": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "taxAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "shippingAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "discountAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "totalAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "shippingAddress": {
+          "$ref": "#/definitions/Address"
+        },
+        "billingAddress": {
+          "$ref": "#/definitions/Address"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "cancelledAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        }
+      },
+      "indexes": [
+        {"fields": ["orderNumber"], "unique": true},
+        {"fields": ["customerId", "createdAt"]},
+        {"fields": ["status", "createdAt"]},
+        {"fields": ["totalAmount"]}
+      ]
+    },
+    
+    "Product": {
+      "type": "object",
+      "description": "Product entity in the catalog",
+      "required": ["id", "sku", "name", "price", "currency", "status", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sku": {
+          "type": "string",
+          "pattern": "^[A-Z0-9-]+$",
+          "description": "Stock keeping unit"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "URL-friendly identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "shortDescription": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "brand": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ProductStatus"
+        },
+        "price": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "compareAtPrice": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0,
+          "nullable": true
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "weight": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "dimensions": {
+          "$ref": "#/definitions/Dimensions"
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "seo": {
+          "$ref": "#/definitions/SEOMetadata"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        }
+      },
+      "indexes": [
+        {"fields": ["sku"], "unique": true},
+        {"fields": ["slug"], "unique": true},
+        {"fields": ["status", "publishedAt"]},
+        {"fields": ["brand"]},
+        {"fields": ["price"]},
+        {"fields": ["createdAt"]}
+      ]
+    },
+    
+    "OrderItem": {
+      "type": "object",
+      "description": "Individual line item in an order",
+      "required": ["id", "orderId", "productId", "quantity", "unitPrice", "totalPrice"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "productId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "variantId": {
+          "type": "string",
+          "format": "uuid",
+          "nullable": true
+        },
+        "productName": {
+          "type": "string"
+        },
+        "variantName": {
+          "type": "string",
+          "nullable": true
+        },
+        "sku": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unitPrice": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "totalPrice": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "discountAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "taxAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/definitions/OrderItemStatus"
+        },
+        "fulfilled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "returned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refunded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "indexes": [
+        {"fields": ["orderId"]},
+        {"fields": ["productId"]},
+        {"fields": ["status"]}
+      ]
+    },
+    
+    "Address": {
+      "type": "object",
+      "description": "Physical address",
+      "required": ["line1", "city", "state", "postalCode", "country"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "type": {
+          "$ref": "#/definitions/AddressType"
+        },
+        "isDefault": {
+          "type": "boolean",
+          "default": false
+        },
+        "line1": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "line2": {
+          "type": "string",
+          "maxLength": 100,
+          "nullable": true
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "postalCode": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code"
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "isValidated": {
+          "type": "boolean",
+          "default": false
+        },
+        "validatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        }
+      }
+    },
+    
+    "Inventory": {
+      "type": "object",
+      "description": "Inventory levels for products",
+      "required": ["productId", "locationId", "quantity", "reserved", "available"],
+      "properties": {
+        "productId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "variantId": {
+          "type": "string",
+          "format": "uuid",
+          "nullable": true
+        },
+        "locationId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Warehouse or store location"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total quantity in stock"
+        },
+        "reserved": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Quantity reserved for orders"
+        },
+        "available": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Quantity available for sale"
+        },
+        "incoming": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Quantity on order from suppliers"
+        },
+        "reorderPoint": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Automatic reorder threshold"
+        },
+        "reorderQuantity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Quantity to reorder"
+        },
+        "lastStockedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastSoldAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        }
+      },
+      "indexes": [
+        {"fields": ["productId", "locationId"], "unique": true},
+        {"fields": ["available"]},
+        {"fields": ["reorderPoint"]}
+      ]
+    },
+    
+    "Payment": {
+      "type": "object",
+      "description": "Payment transaction",
+      "required": ["id", "orderId", "method", "status", "amount", "currency"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "method": {
+          "$ref": "#/definitions/PaymentMethod"
+        },
+        "status": {
+          "$ref": "#/definitions/PaymentStatus"
+        },
+        "amount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "transactionId": {
+          "type": "string",
+          "description": "External payment gateway transaction ID"
+        },
+        "gateway": {
+          "type": "string",
+          "description": "Payment gateway used"
+        },
+        "last4": {
+          "type": "string",
+          "pattern": "^[0-9]{4}$",
+          "description": "Last 4 digits of card"
+        },
+        "cardBrand": {
+          "type": "string",
+          "description": "Card brand (Visa, Mastercard, etc.)"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional payment metadata"
+        },
+        "processedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "refundedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "refundAmount": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0,
+          "nullable": true
+        }
+      },
+      "indexes": [
+        {"fields": ["orderId"]},
+        {"fields": ["transactionId"], "unique": true},
+        {"fields": ["status", "processedAt"]}
+      ]
+    },
+    
+    "CustomerPreferences": {
+      "type": "object",
+      "description": "Customer preferences and settings",
+      "required": ["customerId"],
+      "properties": {
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "communication": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "object",
+              "properties": {
+                "marketing": {"type": "boolean", "default": false},
+                "transactional": {"type": "boolean", "default": true},
+                "newsletter": {"type": "boolean", "default": false}
+              }
+            },
+            "sms": {
+              "type": "object",
+              "properties": {
+                "marketing": {"type": "boolean", "default": false},
+                "transactional": {"type": "boolean", "default": false}
+              }
+            },
+            "push": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean", "default": false},
+                "orderUpdates": {"type": "boolean", "default": true},
+                "promotions": {"type": "boolean", "default": false}
+              }
+            }
+          }
+        },
+        "display": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string",
+              "pattern": "^[a-z]{2}-[A-Z]{2}$",
+              "default": "en-US"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "default": "USD"
+            },
+            "timezone": {
+              "type": "string",
+              "default": "UTC"
+            },
+            "dateFormat": {
+              "$ref": "#/definitions/DateFormat"
+            }
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "properties": {
+            "dataCollection": {"type": "boolean", "default": true},
+            "thirdPartySharing": {"type": "boolean", "default": false},
+            "analyticsTracking": {"type": "boolean", "default": true}
+          }
+        }
+      }
+    },
+    
+    "ActivityLog": {
+      "type": "object",
+      "description": "User activity tracking",
+      "required": ["id", "customerId", "action", "timestamp"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "action": {
+          "type": "string",
+          "description": "Action performed"
+        },
+        "entityType": {
+          "type": "string",
+          "description": "Type of entity acted upon"
+        },
+        "entityId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "ID of entity acted upon"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional activity context"
+        },
+        "ipAddress": {
+          "type": "string",
+          "format": "ipv4"
+        },
+        "userAgent": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "indexes": [
+        {"fields": ["customerId", "timestamp"]},
+        {"fields": ["action", "timestamp"]},
+        {"fields": ["entityType", "entityId"]}
+      ]
+    },
+    
+    "CustomerStatus": {
+      "type": "string",
+      "enum": ["active", "inactive", "suspended", "pending_verification"],
+      "description": "Customer account status"
+    },
+    
+    "CustomerTier": {
+      "type": "string",
+      "enum": ["bronze", "silver", "gold", "platinum", "vip"],
+      "description": "Customer loyalty tier"
+    },
+    
+    "OrderStatus": {
+      "type": "string",
+      "enum": ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"],
+      "description": "Order fulfillment status"
+    },
+    
+    "OrderItemStatus": {
+      "type": "string",
+      "enum": ["pending", "allocated", "shipped", "delivered", "cancelled", "returned"],
+      "description": "Individual order item status"
+    },
+    
+    "ProductStatus": {
+      "type": "string",
+      "enum": ["draft", "active", "discontinued", "out_of_stock"],
+      "description": "Product availability status"
+    },
+    
+    "PaymentMethod": {
+      "type": "string",
+      "enum": ["credit_card", "debit_card", "paypal", "apple_pay", "google_pay", "bank_transfer", "cash_on_delivery"],
+      "description": "Payment method type"
+    },
+    
+    "PaymentStatus": {
+      "type": "string",
+      "enum": ["pending", "processing", "completed", "failed", "refunded", "partially_refunded"],
+      "description": "Payment transaction status"
+    },
+    
+    "AddressType": {
+      "type": "string",
+      "enum": ["billing", "shipping", "both"],
+      "description": "Address usage type"
+    },
+    
+    "DateFormat": {
+      "type": "string",
+      "enum": ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"],
+      "description": "Date display format"
+    },
+    
+    "Dimensions": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "width": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "format": "decimal",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["cm", "in", "m", "ft"]
+        }
+      }
+    },
+    
+    "SEOMetadata": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "canonical": {
+          "type": "string",
+          "format": "uri"
+        },
+        "ogTitle": {
+          "type": "string"
+        },
+        "ogDescription": {
+          "type": "string"
+        },
+        "ogImage": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    }
+  }
+}

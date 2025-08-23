@@ -1,0 +1,289 @@
+# Kong Ingress Controller Configuration
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kong
+  labels:
+    name: kong
+---
+# Kong Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-server-blocks
+  namespace: kong
+data:
+  kong.conf: |
+    # Kong configuration
+    database = postgres
+    pg_host = postgres-primary.production.svc.cluster.local
+    pg_port = 5432
+    pg_database = kong
+    pg_user = kong
+    pg_password = ${KONG_PG_PASSWORD}
+    
+    # Performance
+    nginx_worker_processes = auto
+    nginx_worker_connections = 16384
+    
+    # Proxy settings
+    proxy_listen = 0.0.0.0:8000, 0.0.0.0:8443 ssl http2
+    admin_listen = 127.0.0.1:8001, 127.0.0.1:8444 ssl
+    status_listen = 0.0.0.0:8100
+    
+    # Security
+    admin_gui_url = http://localhost:8002
+    admin_gui_access_log = off
+    admin_access_log = /dev/stdout
+    proxy_access_log = /dev/stdout
+    proxy_error_log = /dev/stderr
+    admin_error_log = /dev/stderr
+    
+    # Plugins
+    plugins = bundled,prometheus,zipkin
+---
+# Kong Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-proxy
+  namespace: kong
+  labels:
+    app: kong-proxy
+    component: kong
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kong-proxy
+  template:
+    metadata:
+      labels:
+        app: kong-proxy
+        component: kong
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: kong-serviceaccount
+      initContainers:
+      - name: kong-migration
+        image: kong:3.4
+        env:
+        - name: KONG_DATABASE
+          value: postgres
+        - name: KONG_PG_HOST
+          value: postgres-primary.production.svc.cluster.local
+        - name: KONG_PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kong-secrets
+              key: pg_password
+        command: ["kong", "migrations", "bootstrap"]
+      containers:
+      - name: kong-proxy
+        image: kong:3.4
+        ports:
+        - name: proxy
+          containerPort: 8000
+          protocol: TCP
+        - name: proxy-ssl
+          containerPort: 8443
+          protocol: TCP
+        - name: status
+          containerPort: 8100
+          protocol: TCP
+        env:
+        - name: KONG_DATABASE
+          value: postgres
+        - name: KONG_PG_HOST
+          value: postgres-primary.production.svc.cluster.local
+        - name: KONG_PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kong-secrets
+              key: pg_password
+        - name: KONG_PROXY_ACCESS_LOG
+          value: /dev/stdout
+        - name: KONG_PROXY_ERROR_LOG
+          value: /dev/stderr
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: /dev/stdout
+        - name: KONG_ADMIN_ERROR_LOG
+          value: /dev/stderr
+        - name: KONG_STATUS_LISTEN
+          value: 0.0.0.0:8100
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: status
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: status
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+---
+# Kong Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-proxy
+  namespace: kong
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: kong-proxy
+  ports:
+  - name: proxy
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: proxy-ssl
+    port: 443
+    targetPort: 8443
+    protocol: TCP
+---
+# Kong Ingress Routes
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: production
+  annotations:
+    konghq.com/strip-path: "true"
+    konghq.com/preserve-host: "true"
+    konghq.com/protocols: "https"
+    konghq.com/https-redirect-status-code: "301"
+spec:
+  ingressClassName: kong
+  tls:
+  - hosts:
+    - api.enterprise.com
+    secretName: api-tls-cert
+  rules:
+  - host: api.enterprise.com
+    http:
+      paths:
+      - path: /api/v1/users
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 8001
+      - path: /api/v1/orders
+        pathType: Prefix
+        backend:
+          service:
+            name: order-service
+            port:
+              number: 8002
+      - path: /api/v1/products
+        pathType: Prefix
+        backend:
+          service:
+            name: product-service
+            port:
+              number: 8003
+      - path: /api/v1/payments
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-service
+            port:
+              number: 8004
+---
+# Kong Plugins
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limiting
+  namespace: production
+config:
+  minute: 60
+  hour: 10000
+  policy: local
+  fault_tolerant: true
+  hide_client_headers: false
+  redis_ssl: false
+  redis_ssl_verify: false
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors
+  namespace: production
+config:
+  origins:
+  - https://app.enterprise.com
+  - https://admin.enterprise.com
+  methods:
+  - GET
+  - POST
+  - PUT
+  - DELETE
+  - OPTIONS
+  headers:
+  - Accept
+  - Accept-Version
+  - Content-Length
+  - Content-MD5
+  - Content-Type
+  - Date
+  - X-Auth-Token
+  - Authorization
+  exposed_headers:
+  - X-Auth-Token
+  credentials: true
+  max_age: 3600
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: prometheus
+  namespace: production
+config:
+  per_consumer: true
+  status_code_metrics: true
+  latency_metrics: true
+  bandwidth_metrics: true
+  upstream_health_metrics: true
+---
+# Apply plugins to ingress
+apiVersion: configuration.konghq.com/v1
+kind: KongIngress
+metadata:
+  name: api-kongingress
+  namespace: production
+proxy:
+  connect_timeout: 10000
+  retries: 3
+  read_timeout: 30000
+  write_timeout: 30000
+route:
+  methods:
+  - GET
+  - POST
+  - PUT
+  - DELETE
+  - OPTIONS
+  strip_path: true
+  preserve_host: true
+  protocols:
+  - https
+  https_redirect_status_code: 301

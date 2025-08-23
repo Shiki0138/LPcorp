@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Exclude generated code -->
+    <Match>
+        <Class name="~.*\.generated\..*"/>
+    </Match>
+    
+    <!-- Exclude test classes -->
+    <Match>
+        <Class name="~.*Test$"/>
+    </Match>
+    <Match>
+        <Class name="~.*Tests$"/>
+    </Match>
+    <Match>
+        <Class name="~.*IT$"/>
+    </Match>
+    
+    <!-- Exclude specific packages -->
+    <Match>
+        <Package name="~.*\.config\..*"/>
+    </Match>
+    
+    <!-- Exclude Lombok generated code -->
+    <Match>
+        <Source name="~.*\.java">
+            <Annotation name="lombok.Data"/>
+        </Source>
+    </Match>
+    <Match>
+        <Source name="~.*\.java">
+            <Annotation name="lombok.Builder"/>
+        </Source>
+    </Match>
+    <Match>
+        <Source name="~.*\.java">
+            <Annotation name="lombok.AllArgsConstructor"/>
+        </Source>
+    </Match>
+    <Match>
+        <Source name="~.*\.java">
+            <Annotation name="lombok.NoArgsConstructor"/>
+        </Source>
+    </Match>
+    
+    <!-- Exclude Spring Boot Application classes -->
+    <Match>
+        <Class name="~.*Application$"/>
+        <Bug pattern="DM_EXIT"/>
+    </Match>
+    
+    <!-- Exclude specific bug patterns -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Priority value="3"/>
+    </Match>
+    
+    <!-- Exclude serialization warnings for DTOs -->
+    <Match>
+        <Class name="~.*Dto$"/>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+    <Match>
+        <Class name="~.*DTO$"/>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+    
+    <!-- Exclude null checks for Optional returns -->
+    <Match>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+        <Method returns="java.util.Optional"/>
+    </Match>
+    
+    <!-- Exclude password/token in URLs for OAuth2 -->
+    <Match>
+        <Class name="~.*OAuth.*"/>
+        <Bug pattern="DMI_CONSTANT_DB_PASSWORD"/>
+    </Match>
+    
+    <!-- Exclude switch fallthrough in generated code -->
+    <Match>
+        <Bug pattern="SF_SWITCH_FALLTHROUGH"/>
+        <Or>
+            <Class name="~.*\.generated\..*"/>
+            <Method name="~get.*"/>
+        </Or>
+    </Match>
+    
+    <!-- Exclude specific methods -->
+    <Match>
+        <Method name="equals"/>
+        <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
+    </Match>
+    
+    <!-- Exclude resource leaks in try-with-resources -->
+    <Match>
+        <Bug pattern="OS_OPEN_STREAM"/>
+        <Priority value="3"/>
+    </Match>
+    
+    <!-- Exclude internationalization warnings -->
+    <Match>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+    </Match>
+    
+    <!-- Exclude specific fields -->
+    <Match>
+        <Field name="serialVersionUID"/>
+        <Bug pattern="SE_PRIVATE_READ_RESOLVE_NOT_INHERITED"/>
+    </Match>
+</FindBugsFilter>

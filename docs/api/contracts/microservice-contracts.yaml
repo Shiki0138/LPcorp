@@ -1,0 +1,543 @@
+# Microservice API Contracts
+# Service-to-service communication specifications
+
+services:
+  customer-service:
+    name: Customer Service
+    description: Manages customer data, profiles, and preferences
+    version: 1.0.0
+    port: 8001
+    
+    provides:
+      - name: CustomerAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: GET
+            path: /customers/{id}
+            description: Get customer by ID
+            auth: service-to-service
+            rateLimit: 1000/minute
+            cache: 5 minutes
+            
+          - method: POST
+            path: /customers/validate
+            description: Validate customer exists
+            auth: service-to-service
+            rateLimit: 5000/minute
+            
+          - method: POST
+            path: /customers/batch
+            description: Get multiple customers
+            auth: service-to-service
+            rateLimit: 100/minute
+            maxBatchSize: 100
+            
+      - name: CustomerEvents
+        protocol: AsyncAPI
+        broker: kafka
+        events:
+          - name: customer.created
+            channel: customers.created
+            schema: CustomerCreatedEvent
+            
+          - name: customer.updated
+            channel: customers.updated
+            schema: CustomerUpdatedEvent
+            
+          - name: customer.verified
+            channel: customers.verified
+            schema: CustomerVerifiedEvent
+    
+    consumes:
+      - service: order-service
+        events:
+          - order.completed
+          - order.cancelled
+      
+      - service: payment-service
+        events:
+          - payment.processed
+          - payment.failed
+
+  order-service:
+    name: Order Service
+    description: Handles order processing and management
+    version: 1.0.0
+    port: 8002
+    
+    provides:
+      - name: OrderAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: GET
+            path: /orders/{id}
+            description: Get order by ID
+            auth: service-to-service
+            rateLimit: 1000/minute
+            cache: 1 minute
+            
+          - method: POST
+            path: /orders
+            description: Create new order
+            auth: service-to-service
+            rateLimit: 100/minute
+            timeout: 30s
+            
+          - method: PUT
+            path: /orders/{id}/status
+            description: Update order status
+            auth: service-to-service
+            rateLimit: 500/minute
+            
+          - method: POST
+            path: /orders/validate-items
+            description: Validate order items availability
+            auth: service-to-service
+            rateLimit: 1000/minute
+            
+      - name: OrderEvents
+        protocol: AsyncAPI
+        broker: kafka
+        events:
+          - name: order.created
+            channel: orders.created
+            schema: OrderCreatedEvent
+            
+          - name: order.status.changed
+            channel: orders.status.changed
+            schema: OrderStatusChangedEvent
+            
+          - name: order.cancelled
+            channel: orders.cancelled
+            schema: OrderCancelledEvent
+    
+    consumes:
+      - service: customer-service
+        apis:
+          - GET /customers/{id}
+          - POST /customers/validate
+          
+      - service: inventory-service
+        apis:
+          - POST /inventory/reserve
+          - POST /inventory/release
+          - GET /inventory/check
+          
+      - service: payment-service
+        apis:
+          - POST /payments/process
+          - POST /payments/refund
+          
+      - service: shipping-service
+        apis:
+          - POST /shipments/create
+          - GET /shipments/rates
+
+  inventory-service:
+    name: Inventory Service
+    description: Manages product inventory and availability
+    version: 1.0.0
+    port: 8003
+    
+    provides:
+      - name: InventoryAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: GET
+            path: /inventory/check
+            description: Check inventory levels
+            auth: service-to-service
+            rateLimit: 5000/minute
+            cache: 30 seconds
+            
+          - method: POST
+            path: /inventory/reserve
+            description: Reserve inventory for order
+            auth: service-to-service
+            rateLimit: 1000/minute
+            timeout: 10s
+            
+          - method: POST
+            path: /inventory/release
+            description: Release reserved inventory
+            auth: service-to-service
+            rateLimit: 1000/minute
+            
+          - method: PUT
+            path: /inventory/update
+            description: Update inventory levels
+            auth: service-to-service
+            rateLimit: 500/minute
+            
+      - name: InventoryEvents
+        protocol: AsyncAPI
+        broker: kafka
+        events:
+          - name: inventory.low
+            channel: inventory.low
+            schema: InventoryLowEvent
+            
+          - name: inventory.depleted
+            channel: inventory.depleted
+            schema: InventoryDepletedEvent
+            
+          - name: inventory.restocked
+            channel: inventory.restocked
+            schema: InventoryRestockedEvent
+    
+    consumes:
+      - service: order-service
+        events:
+          - order.created
+          - order.cancelled
+          
+      - service: product-service
+        events:
+          - product.created
+          - product.updated
+
+  payment-service:
+    name: Payment Service
+    description: Processes payments and refunds
+    version: 1.0.0
+    port: 8004
+    
+    provides:
+      - name: PaymentAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: POST
+            path: /payments/process
+            description: Process payment
+            auth: service-to-service
+            rateLimit: 100/minute
+            timeout: 30s
+            retry: 3
+            
+          - method: POST
+            path: /payments/authorize
+            description: Authorize payment
+            auth: service-to-service
+            rateLimit: 100/minute
+            timeout: 20s
+            
+          - method: POST
+            path: /payments/capture
+            description: Capture authorized payment
+            auth: service-to-service
+            rateLimit: 100/minute
+            
+          - method: POST
+            path: /payments/refund
+            description: Process refund
+            auth: service-to-service
+            rateLimit: 50/minute
+            timeout: 30s
+            
+      - name: PaymentEvents
+        protocol: AsyncAPI
+        broker: kafka
+        events:
+          - name: payment.processed
+            channel: payments.processed
+            schema: PaymentProcessedEvent
+            
+          - name: payment.failed
+            channel: payments.failed
+            schema: PaymentFailedEvent
+            
+          - name: payment.refunded
+            channel: payments.refunded
+            schema: PaymentRefundedEvent
+    
+    consumes:
+      - service: order-service
+        apis:
+          - GET /orders/{id}
+          
+      - service: customer-service
+        apis:
+          - GET /customers/{id}
+
+  notification-service:
+    name: Notification Service
+    description: Sends notifications across multiple channels
+    version: 1.0.0
+    port: 8005
+    
+    provides:
+      - name: NotificationAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: POST
+            path: /notifications/send
+            description: Send notification
+            auth: service-to-service
+            rateLimit: 1000/minute
+            async: true
+            
+          - method: POST
+            path: /notifications/batch
+            description: Send batch notifications
+            auth: service-to-service
+            rateLimit: 10/minute
+            maxBatchSize: 1000
+            
+          - method: GET
+            path: /notifications/status/{id}
+            description: Check notification status
+            auth: service-to-service
+            rateLimit: 1000/minute
+    
+    consumes:
+      - service: order-service
+        events:
+          - order.created
+          - order.shipped
+          - order.delivered
+          
+      - service: customer-service
+        events:
+          - customer.created
+          - customer.verified
+          
+      - service: payment-service
+        events:
+          - payment.processed
+          - payment.failed
+
+  analytics-service:
+    name: Analytics Service
+    description: Provides analytics and reporting
+    version: 1.0.0
+    port: 8006
+    
+    provides:
+      - name: AnalyticsAPI
+        protocol: REST
+        basePath: /api/v1
+        endpoints:
+          - method: POST
+            path: /analytics/events
+            description: Track analytics event
+            auth: service-to-service
+            rateLimit: 10000/minute
+            async: true
+            
+          - method: GET
+            path: /analytics/metrics
+            description: Get metrics
+            auth: service-to-service
+            rateLimit: 100/minute
+            cache: 5 minutes
+            
+          - method: POST
+            path: /analytics/query
+            description: Execute analytics query
+            auth: service-to-service
+            rateLimit: 10/minute
+            timeout: 60s
+    
+    consumes:
+      - service: ALL
+        events:
+          - "*"
+        description: Consumes all events for analytics
+
+# Service Communication Patterns
+
+patterns:
+  synchronous:
+    - name: Request-Response
+      description: Direct API calls between services
+      use-cases:
+        - Real-time data retrieval
+        - Immediate confirmation needed
+      implementation:
+        - HTTP/REST
+        - gRPC
+        - GraphQL federation
+      
+    - name: Circuit Breaker
+      description: Fail fast with fallback
+      configuration:
+        failureThreshold: 5
+        successThreshold: 2
+        timeout: 30s
+        halfOpenRequests: 3
+        
+  asynchronous:
+    - name: Event-Driven
+      description: Publish-subscribe pattern
+      use-cases:
+        - Decoupled communication
+        - Multiple consumers
+      implementation:
+        - Apache Kafka
+        - RabbitMQ
+        - AWS EventBridge
+        
+    - name: SAGA Pattern
+      description: Distributed transactions
+      types:
+        - Choreography: Event-based coordination
+        - Orchestration: Central coordinator
+      
+    - name: CQRS
+      description: Command Query Responsibility Segregation
+      components:
+        - Command Service: Handles writes
+        - Query Service: Handles reads
+        - Event Store: Source of truth
+
+# Inter-Service Authentication
+
+authentication:
+  method: mTLS
+  certificate-authority: internal-ca
+  
+  service-tokens:
+    type: JWT
+    issuer: auth-service
+    audience: service-name
+    expiry: 3600
+    rotation: automatic
+    
+  permissions:
+    model: RBAC
+    roles:
+      - name: service-reader
+        permissions:
+          - read:*
+          
+      - name: service-writer
+        permissions:
+          - read:*
+          - write:*
+          
+      - name: service-admin
+        permissions:
+          - "*"
+
+# Service Discovery
+
+discovery:
+  method: consul
+  health-check:
+    interval: 30s
+    timeout: 5s
+    deregister-after: 300s
+    
+  metadata:
+    - version
+    - protocol
+    - region
+    - environment
+
+# Rate Limiting
+
+rate-limiting:
+  strategy: token-bucket
+  
+  tiers:
+    - name: critical
+      limit: 10000/minute
+      burst: 1000
+      
+    - name: standard
+      limit: 1000/minute
+      burst: 100
+      
+    - name: batch
+      limit: 10/minute
+      burst: 5
+      
+  headers:
+    - X-RateLimit-Limit
+    - X-RateLimit-Remaining
+    - X-RateLimit-Reset
+
+# Error Handling
+
+error-handling:
+  retry-policy:
+    max-attempts: 3
+    backoff: exponential
+    initial-delay: 1s
+    max-delay: 30s
+    
+  timeout-policy:
+    default: 30s
+    read: 60s
+    write: 30s
+    
+  fallback-strategies:
+    - cached-response
+    - default-value
+    - graceful-degradation
+    - circuit-breaker
+
+# Monitoring & Observability
+
+observability:
+  tracing:
+    provider: opentelemetry
+    sampling-rate: 0.01
+    
+  metrics:
+    provider: prometheus
+    scrape-interval: 15s
+    
+  logging:
+    format: json
+    level: info
+    correlation-id: required
+    
+  health-endpoints:
+    - /health/live
+    - /health/ready
+    - /health/startup
+
+# Data Contracts
+
+schemas:
+  CustomerCreatedEvent:
+    type: object
+    required: [eventId, customerId, email, timestamp]
+    properties:
+      eventId: string
+      customerId: string
+      email: string
+      firstName: string
+      lastName: string
+      timestamp: string
+      
+  OrderCreatedEvent:
+    type: object
+    required: [eventId, orderId, customerId, totalAmount, timestamp]
+    properties:
+      eventId: string
+      orderId: string
+      customerId: string
+      totalAmount: number
+      currency: string
+      items: array
+      timestamp: string
+      
+  PaymentProcessedEvent:
+    type: object
+    required: [eventId, paymentId, orderId, amount, status, timestamp]
+    properties:
+      eventId: string
+      paymentId: string
+      orderId: string
+      amount: number
+      currency: string
+      status: string
+      method: string
+      timestamp: string

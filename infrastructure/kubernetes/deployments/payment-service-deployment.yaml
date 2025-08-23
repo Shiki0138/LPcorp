@@ -1,0 +1,171 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: production
+  labels:
+    app: payment-service
+    version: v1
+    component: backend
+    tier: api
+    compliance: pci
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        version: v1
+        component: backend
+        tier: api
+        compliance: pci
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: payment-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      nodeSelector:
+        workload: application
+        compliance: pci  # Dedicated PCI-compliant nodes
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - payment-service
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: payment-service
+        image: ghcr.io/enterprise/payment-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: https
+          containerPort: 8004
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: SERVICE_NAME
+          value: "payment-service"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: database.host
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: database.port
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: database.name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: database.username
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: database.password
+        - name: PAYMENT_GATEWAY_URL
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: payment.gateway.url
+        - name: PAYMENT_GATEWAY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: payment.gateway.apikey
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: encryption.key
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: kafka.brokers
+        - name: KAFKA_TOPIC_PAYMENTS
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: kafka.topic.payments
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: app-config
+          mountPath: /etc/config
+          readOnly: true
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+        - name: audit-logs
+          mountPath: /var/log/audit
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: app-config
+        configMap:
+          name: payment-service-config
+      - name: tls-certs
+        secret:
+          secretName: payment-service-tls
+      - name: audit-logs
+        emptyDir: {}
+      imagePullSecrets:
+      - name: ghcr-pull-secret

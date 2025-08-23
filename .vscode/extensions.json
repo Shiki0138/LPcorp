@@ -1,0 +1,59 @@
+{
+    "recommendations": [
+        // Java extensions
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-java-debug",
+        "vscjava.vscode-java-test",
+        "vscjava.vscode-maven",
+        "vscjava.vscode-java-dependency",
+        "redhat.java",
+        
+        // Spring Boot extensions
+        "vscjava.vscode-spring-initializr",
+        "vscjava.vscode-spring-boot-dashboard",
+        "pivotal.vscode-spring-boot",
+        
+        // Code quality
+        "shengchen.vscode-checkstyle",
+        "sonarsource.sonarlint-vscode",
+        
+        // Database
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-mysql",
+        "mongodb.mongodb-vscode",
+        
+        // Docker
+        "ms-azuretools.vscode-docker",
+        "ms-vscode-remote.remote-containers",
+        
+        // Kubernetes
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        
+        // YAML
+        "redhat.vscode-yaml",
+        
+        // XML
+        "redhat.vscode-xml",
+        
+        // Git
+        "eamodio.gitlens",
+        "donjayamanne.githistory",
+        
+        // API development
+        "42crunch.vscode-openapi",
+        "arjun.swagger-viewer",
+        
+        // Markdown
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        
+        // Other utilities
+        "streetsidesoftware.code-spell-checker",
+        "wayou.vscode-todo-highlight",
+        "gruntfuggly.todo-tree",
+        "editorconfig.editorconfig",
+        "christian-kohler.path-intellisense",
+        "formulahendry.auto-rename-tag",
+        "formulahendry.auto-close-tag"
+    ]
+}

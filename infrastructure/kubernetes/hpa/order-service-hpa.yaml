@@ -1,0 +1,71 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-service-hpa
+  namespace: production
+  labels:
+    app: order-service
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-service
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  # CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  # Memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Kafka consumer lag
+  - type: External
+    external:
+      metric:
+        name: kafka_consumer_lag
+        selector:
+          matchLabels:
+            topic: order-events
+            consumer_group: order-service-consumer
+      target:
+        type: Value
+        value: "1000"  # Max 1000 messages lag
+  # Custom metric - active orders
+  - type: Pods
+    pods:
+      metric:
+        name: active_orders_per_pod
+      target:
+        type: AverageValue
+        averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes for orders
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 120
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Faster scale up for orders
+      policies:
+      - type: Percent
+        value: 200  # Triple the pods
+        periodSeconds: 30
+      - type: Pods
+        value: 10   # Or add 10 pods
+        periodSeconds: 30
+      selectPolicy: Max

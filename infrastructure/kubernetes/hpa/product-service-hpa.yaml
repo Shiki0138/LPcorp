@@ -1,0 +1,64 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: product-service-hpa
+  namespace: production
+  labels:
+    app: product-service
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: product-service
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+  # CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Cache hit ratio (scale up when cache misses increase)
+  - type: Pods
+    pods:
+      metric:
+        name: redis_cache_hit_ratio
+      target:
+        type: AverageValue
+        averageValue: "0.8"  # Target 80% cache hit ratio
+  # Search latency
+  - type: Pods
+    pods:
+      metric:
+        name: elasticsearch_search_latency_p95
+      target:
+        type: AverageValue
+        averageValue: "200m"  # 200ms
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 20  # Scale down by 20%
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 5
+        periodSeconds: 60
+      selectPolicy: Max

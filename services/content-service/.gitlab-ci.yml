@@ -1,0 +1,97 @@
+# Content Service CI/CD Pipeline
+# Extends from root pipeline configuration
+
+variables:
+  SERVICE_NAME: "content-service"
+  SERVICE_PORT: "8082"
+  DATABASE_NAME: "contentdb"
+
+# Service-specific compile
+compile:content-service:
+  extends: .maven-build
+  stage: compile
+  only:
+    changes:
+      - services/content-service/**/*
+      - pom.xml
+  script:
+    - cd services/content-service
+    - mvn clean compile -DskipTests
+
+# Service-specific unit tests
+test:unit:content-service:
+  extends: .maven-unit-test
+  stage: test
+  needs: ["compile:content-service"]
+  only:
+    changes:
+      - services/content-service/**/*
+  script:
+    - cd services/content-service
+    - mvn test jacoco:report
+
+# Service-specific integration tests
+test:integration:content-service:
+  extends: .maven-integration-test
+  stage: test
+  needs: ["test:unit:content-service"]
+  services:
+    - postgres:13
+    - redis:6
+    - elasticsearch:7.17.0
+  variables:
+    POSTGRES_DB: "${DATABASE_NAME}"
+    ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  only:
+    changes:
+      - services/content-service/**/*
+  script:
+    - cd services/content-service
+    - mvn verify -Pintegration-test
+
+# Service-specific Docker build
+build:docker:content-service:
+  extends: .docker-build
+  stage: build
+  needs: ["test:integration:content-service"]
+  only:
+    changes:
+      - services/content-service/**/*
+  before_script:
+    - cd services/content-service
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+
+# Service-specific deployments
+deploy:dev:content-service:
+  extends: .helm-deploy
+  stage: deploy-dev
+  needs: ["build:docker:content-service"]
+  environment:
+    name: development/content-service
+    url: https://content-service-dev.lp-platform.com
+  variables:
+    MIN_REPLICAS: 3
+    MAX_REPLICAS: 10
+    MEMORY_REQUEST: "1Gi"
+    MEMORY_LIMIT: "2Gi"
+  only:
+    refs:
+      - develop
+    changes:
+      - services/content-service/**/*
+
+deploy:staging:content-service:
+  extends: .helm-deploy
+  stage: deploy-staging
+  environment:
+    name: staging/content-service
+    url: https://content-service-staging.lp-platform.com
+  when: manual
+
+deploy:prod:content-service:
+  extends: .blue-green-deploy
+  stage: deploy-prod
+  environment:
+    name: production/content-service
+    url: https://api.lp-platform.com/content
+  when: manual

@@ -1,0 +1,634 @@
+websocket-events: 1.0.0
+info:
+  title: Enterprise WebSocket Events
+  description: Real-time event specifications for the enterprise system
+  version: 1.0.0
+
+connection:
+  url: wss://ws.enterprise.com/v1/events
+  protocols:
+    - websocket
+    - socket.io
+  
+  authentication:
+    type: bearer
+    format: JWT
+    handshake:
+      - type: auth
+        payload:
+          token: string
+          clientId: string
+          sessionId: string
+    
+  heartbeat:
+    interval: 30000
+    timeout: 60000
+    message:
+      type: ping
+      payload:
+        timestamp: ISO8601
+    response:
+      type: pong
+      payload:
+        timestamp: ISO8601
+
+channels:
+  - name: orders
+    description: Order-related events
+    subscribe:
+      permissions:
+        - orders:read
+      filters:
+        - customerId: UUID
+        - orderStatus: OrderStatus[]
+        - dateRange: DateRange
+    
+  - name: inventory
+    description: Inventory update events
+    subscribe:
+      permissions:
+        - inventory:read
+      filters:
+        - productIds: UUID[]
+        - warehouseId: UUID
+        - threshold: number
+    
+  - name: customers
+    description: Customer activity events
+    subscribe:
+      permissions:
+        - customers:read
+      filters:
+        - customerId: UUID
+        - segmentId: UUID
+        - activityType: string[]
+    
+  - name: system
+    description: System-wide notifications
+    subscribe:
+      permissions:
+        - system:monitor
+      filters:
+        - severity: NotificationSeverity[]
+        - component: string[]
+
+events:
+  # Order Events
+  order.created:
+    channel: orders
+    description: New order created
+    payload:
+      id: UUID
+      type: "order.created"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        orderNumber: string
+        customerId: UUID
+        totalAmount: decimal
+        currency: string
+        itemCount: integer
+        status: OrderStatus
+      metadata:
+        source: string
+        correlationId: UUID
+        userId: UUID
+        ipAddress: string
+
+  order.updated:
+    channel: orders
+    description: Order information updated
+    payload:
+      id: UUID
+      type: "order.updated"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        changes:
+          type: array
+          items:
+            field: string
+            oldValue: any
+            newValue: any
+      metadata:
+        source: string
+        correlationId: UUID
+        userId: UUID
+
+  order.status.changed:
+    channel: orders
+    description: Order status changed
+    payload:
+      id: UUID
+      type: "order.status.changed"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        orderNumber: string
+        customerId: UUID
+        previousStatus: OrderStatus
+        currentStatus: OrderStatus
+        reason: string
+      metadata:
+        source: string
+        correlationId: UUID
+        userId: UUID
+
+  order.cancelled:
+    channel: orders
+    description: Order cancelled
+    payload:
+      id: UUID
+      type: "order.cancelled"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        orderNumber: string
+        customerId: UUID
+        reason: CancelReason
+        refundAmount: decimal
+        refundStatus: RefundStatus
+      metadata:
+        source: string
+        correlationId: UUID
+        userId: UUID
+
+  order.shipped:
+    channel: orders
+    description: Order shipped
+    payload:
+      id: UUID
+      type: "order.shipped"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        shipmentId: UUID
+        trackingNumber: string
+        carrier: string
+        estimatedDelivery: date
+        items:
+          type: array
+          items:
+            orderItemId: UUID
+            quantity: integer
+      metadata:
+        source: string
+        correlationId: UUID
+
+  order.delivered:
+    channel: orders
+    description: Order delivered
+    payload:
+      id: UUID
+      type: "order.delivered"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        orderId: UUID
+        shipmentId: UUID
+        deliveredAt: ISO8601
+        signedBy: string
+        deliveryPhoto: URL
+      metadata:
+        source: string
+        correlationId: UUID
+
+  # Inventory Events
+  inventory.low:
+    channel: inventory
+    description: Low inventory alert
+    payload:
+      id: UUID
+      type: "inventory.low"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        productId: UUID
+        variantId: UUID
+        sku: string
+        currentLevel: integer
+        reorderPoint: integer
+        warehouseId: UUID
+      metadata:
+        source: string
+        priority: "high"
+
+  inventory.depleted:
+    channel: inventory
+    description: Out of stock alert
+    payload:
+      id: UUID
+      type: "inventory.depleted"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        productId: UUID
+        variantId: UUID
+        sku: string
+        warehouseId: UUID
+        lastSoldAt: ISO8601
+      metadata:
+        source: string
+        priority: "critical"
+
+  inventory.restocked:
+    channel: inventory
+    description: Product restocked
+    payload:
+      id: UUID
+      type: "inventory.restocked"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        productId: UUID
+        variantId: UUID
+        sku: string
+        quantity: integer
+        newLevel: integer
+        warehouseId: UUID
+      metadata:
+        source: string
+
+  inventory.reserved:
+    channel: inventory
+    description: Inventory reserved for order
+    payload:
+      id: UUID
+      type: "inventory.reserved"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        reservationId: UUID
+        orderId: UUID
+        items:
+          type: array
+          items:
+            productId: UUID
+            variantId: UUID
+            quantity: integer
+        expiresAt: ISO8601
+      metadata:
+        source: string
+        correlationId: UUID
+
+  # Customer Events
+  customer.created:
+    channel: customers
+    description: New customer registered
+    payload:
+      id: UUID
+      type: "customer.created"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        customerId: UUID
+        email: string
+        source: string
+        marketingConsent: boolean
+      metadata:
+        source: string
+        ipAddress: string
+        userAgent: string
+
+  customer.updated:
+    channel: customers
+    description: Customer profile updated
+    payload:
+      id: UUID
+      type: "customer.updated"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        customerId: UUID
+        changes:
+          type: array
+          items:
+            field: string
+            oldValue: any
+            newValue: any
+      metadata:
+        source: string
+        userId: UUID
+
+  customer.verified:
+    channel: customers
+    description: Customer verification completed
+    payload:
+      id: UUID
+      type: "customer.verified"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        customerId: UUID
+        verificationType: string
+        verificationLevel: string
+        verifiedAt: ISO8601
+      metadata:
+        source: string
+
+  customer.tier.changed:
+    channel: customers
+    description: Customer tier updated
+    payload:
+      id: UUID
+      type: "customer.tier.changed"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        customerId: UUID
+        previousTier: CustomerTier
+        currentTier: CustomerTier
+        reason: string
+      metadata:
+        source: string
+
+  customer.activity:
+    channel: customers
+    description: Customer activity tracked
+    payload:
+      id: UUID
+      type: "customer.activity"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        customerId: UUID
+        activityType: string
+        activityData: JSON
+        sessionId: string
+      metadata:
+        source: string
+        ipAddress: string
+
+  # Payment Events
+  payment.processed:
+    channel: orders
+    description: Payment successfully processed
+    payload:
+      id: UUID
+      type: "payment.processed"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        paymentId: UUID
+        orderId: UUID
+        amount: decimal
+        currency: string
+        method: PaymentMethod
+        transactionId: string
+      metadata:
+        source: string
+        correlationId: UUID
+
+  payment.failed:
+    channel: orders
+    description: Payment failed
+    payload:
+      id: UUID
+      type: "payment.failed"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        paymentId: UUID
+        orderId: UUID
+        amount: decimal
+        currency: string
+        method: PaymentMethod
+        failureReason: string
+        failureCode: string
+      metadata:
+        source: string
+        correlationId: UUID
+
+  payment.refunded:
+    channel: orders
+    description: Payment refunded
+    payload:
+      id: UUID
+      type: "payment.refunded"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        refundId: UUID
+        paymentId: UUID
+        orderId: UUID
+        amount: decimal
+        currency: string
+        reason: string
+      metadata:
+        source: string
+        correlationId: UUID
+
+  # Cart Events
+  cart.abandoned:
+    channel: customers
+    description: Shopping cart abandoned
+    payload:
+      id: UUID
+      type: "cart.abandoned"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        cartId: UUID
+        customerId: UUID
+        items:
+          type: array
+          items:
+            productId: UUID
+            variantId: UUID
+            quantity: integer
+            price: decimal
+        totalValue: decimal
+        abandonedAt: ISO8601
+      metadata:
+        source: string
+        sessionId: string
+
+  cart.recovered:
+    channel: customers
+    description: Abandoned cart recovered
+    payload:
+      id: UUID
+      type: "cart.recovered"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        cartId: UUID
+        customerId: UUID
+        orderId: UUID
+        recoveryMethod: string
+      metadata:
+        source: string
+        campaignId: UUID
+
+  # Price Events
+  price.changed:
+    channel: inventory
+    description: Product price changed
+    payload:
+      id: UUID
+      type: "price.changed"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        productId: UUID
+        variantId: UUID
+        previousPrice: decimal
+        currentPrice: decimal
+        currency: string
+        reason: string
+      metadata:
+        source: string
+        userId: UUID
+
+  price.promotion.started:
+    channel: inventory
+    description: Promotion started
+    payload:
+      id: UUID
+      type: "price.promotion.started"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        promotionId: UUID
+        name: string
+        products:
+          type: array
+          items:
+            productId: UUID
+            discountPercent: decimal
+            discountAmount: decimal
+        startsAt: ISO8601
+        endsAt: ISO8601
+      metadata:
+        source: string
+
+  # System Events
+  system.maintenance:
+    channel: system
+    description: System maintenance notification
+    payload:
+      id: UUID
+      type: "system.maintenance"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        maintenanceId: UUID
+        type: MaintenanceType
+        startsAt: ISO8601
+        estimatedDuration: integer
+        affectedServices:
+          type: array
+          items: string
+        message: string
+      metadata:
+        source: string
+        priority: string
+
+  system.alert:
+    channel: system
+    description: System alert
+    payload:
+      id: UUID
+      type: "system.alert"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        alertId: UUID
+        severity: AlertSeverity
+        component: string
+        message: string
+        details: JSON
+      metadata:
+        source: string
+        correlationId: UUID
+
+  system.metric:
+    channel: system
+    description: System metric update
+    payload:
+      id: UUID
+      type: "system.metric"
+      timestamp: ISO8601
+      version: "1.0"
+      data:
+        metricName: string
+        value: number
+        unit: string
+        tags:
+          type: object
+      metadata:
+        source: string
+
+error-handling:
+  connection-errors:
+    - code: 4000
+      message: "Invalid authentication token"
+      reconnect: false
+    - code: 4001
+      message: "Token expired"
+      reconnect: true
+    - code: 4002
+      message: "Insufficient permissions"
+      reconnect: false
+    - code: 4003
+      message: "Rate limit exceeded"
+      reconnect: true
+      retryAfter: 60000
+    - code: 4004
+      message: "Invalid subscription filter"
+      reconnect: false
+
+  message-errors:
+    - code: 5000
+      message: "Invalid message format"
+    - code: 5001
+      message: "Unknown event type"
+    - code: 5002
+      message: "Message too large"
+    - code: 5003
+      message: "Processing error"
+
+rate-limiting:
+  connections:
+    perIp: 10
+    perUser: 5
+  
+  messages:
+    perMinute: 1000
+    perHour: 50000
+    burstSize: 100
+  
+  subscriptions:
+    maxPerConnection: 50
+    maxFiltersPerSubscription: 10
+
+message-queue:
+  delivery: at-least-once
+  ordering: per-channel
+  retention: 7days
+  maxRetries: 5
+  deadLetterQueue: enabled
+
+monitoring:
+  metrics:
+    - connectionCount
+    - messageRate
+    - errorRate
+    - latency
+    - queueDepth
+  
+  health-check:
+    endpoint: /health
+    interval: 30s
+
+scaling:
+  horizontal: enabled
+  loadBalancing: sticky-sessions
+  sharding:
+    strategy: consistent-hash
+    key: customerId

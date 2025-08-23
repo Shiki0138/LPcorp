@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ユーザーモデル
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  passwordHash     String?
+  name             String?
+  companyName      String?
+  planType         PlanType          @default(STARTER)
+  isEmailVerified  Boolean           @default(false)
+  magicLinkToken   String?           @unique
+  magicLinkExpiry  DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  // Relations
+  landingPages     LandingPage[]
+  analytics        Analytics[]
+  payments         Payment[]
+  apiUsage         APIUsage[]
+  notifications    Notification[]
+  
+  @@index([email])
+}
+
+// ランディングページモデル
+model LandingPage {
+  id               String            @id @default(cuid())
+  userId           String
+  title            String
+  slug             String            @unique
+  industry         String
+  purpose          String
+  content          Json              // LP全体のコンテンツJSON
+  settings         Json              // 設定情報
+  isPublished      Boolean           @default(false)
+  publishedAt      DateTime?
+  generationTime   Int               // 生成にかかった時間（秒）
+  aiModel          String            // 使用したAIモデル
+  complianceCheck  Json?             // 法令チェック結果
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  // Relations
+  user             User              @relation(fields: [userId], references: [id])
+  analytics        Analytics[]
+  heatmaps         Heatmap[]
+  conversions      Conversion[]
+  abTests          ABTest[]
+  
+  @@index([userId])
+  @@index([slug])
+}
+
+// 分析データモデル
+model Analytics {
+  id               String            @id @default(cuid())
+  landingPageId    String
+  userId           String
+  date             DateTime          @default(now())
+  pageViews        Int               @default(0)
+  uniqueVisitors   Int               @default(0)
+  bounceRate       Float             @default(0)
+  avgTimeOnPage    Float             @default(0)
+  conversionRate   Float             @default(0)
+  deviceStats      Json              // デバイス別統計
+  trafficSources   Json              // 流入元統計
+  
+  // Relations
+  landingPage      LandingPage       @relation(fields: [landingPageId], references: [id])
+  user             User              @relation(fields: [userId], references: [id])
+  
+  @@index([landingPageId])
+  @@index([userId])
+  @@index([date])
+}
+
+// ヒートマップデータ
+model Heatmap {
+  id               String            @id @default(cuid())
+  landingPageId    String
+  sessionId        String
+  data             Json              // クリック、スクロール、マウス移動データ
+  deviceType       String
+  screenResolution String
+  createdAt        DateTime          @default(now())
+  
+  // Relations
+  landingPage      LandingPage       @relation(fields: [landingPageId], references: [id])
+  
+  @@index([landingPageId])
+  @@index([createdAt])
+}
+
+// コンバージョンデータ
+model Conversion {
+  id               String            @id @default(cuid())
+  landingPageId    String
+  sessionId        String
+  type             String            // form_submit, button_click, etc.
+  metadata         Json?             // 追加メタデータ
+  createdAt        DateTime          @default(now())
+  
+  // Relations
+  landingPage      LandingPage       @relation(fields: [landingPageId], references: [id])
+  
+  @@index([landingPageId])
+  @@index([createdAt])
+}
+
+// A/Bテスト
+model ABTest {
+  id               String            @id @default(cuid())
+  landingPageId    String
+  name             String
+  variantA         Json              // バリアントAの設定
+  variantB         Json              // バリアントBの設定
+  status           ABTestStatus      @default(DRAFT)
+  startDate        DateTime?
+  endDate          DateTime?
+  winner           String?           // 勝利バリアント
+  results          Json?             // テスト結果
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  // Relations
+  landingPage      LandingPage       @relation(fields: [landingPageId], references: [id])
+  
+  @@index([landingPageId])
+}
+
+// 支払い情報
+model Payment {
+  id               String            @id @default(cuid())
+  userId           String
+  stripePaymentId  String            @unique
+  amount           Int               // 金額（円）
+  currency         String            @default("jpy")
+  status           PaymentStatus
+  planType         PlanType
+  period           String            // monthly/yearly
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  
+  // Relations
+  user             User              @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([stripePaymentId])
+}
+
+// API使用量追跡
+model APIUsage {
+  id               String            @id @default(cuid())
+  userId           String
+  endpoint         String
+  model            String            // gpt-3.5, gpt-4, dalle-3, etc.
+  tokens           Int               @default(0)
+  cost             Float             @default(0)
+  createdAt        DateTime          @default(now())
+  
+  // Relations
+  user             User              @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// 通知
+model Notification {
+  id               String            @id @default(cuid())
+  userId           String
+  type             NotificationType
+  title            String
+  message          String
+  metadata         Json?
+  isRead           Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  
+  // Relations
+  user             User              @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([isRead])
+}
+
+// Enums
+enum PlanType {
+  STARTER
+  STANDARD
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum ABTestStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  REPORT
+  IMPROVEMENT
+}

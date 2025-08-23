@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: production
+  labels:
+    app: payment-service
+    component: backend
+    tier: api
+    compliance: pci
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "ssl"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789012:certificate/payment-cert-id"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+spec:
+  type: ClusterIP
+  selector:
+    app: payment-service
+  ports:
+  - name: https
+    port: 8004
+    targetPort: https
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600  # 1 hour for payment sessions
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: payment-service
+  namespace: production
+  labels:
+    app: payment-service
+    compliance: pci
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/payment-service-role

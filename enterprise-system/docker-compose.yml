@@ -1,0 +1,314 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: enterprise-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_MULTIPLE_DATABASES: userdb,orderdb,inventorydb,paymentdb,notificationdb,authdb,analyticsdb,reportingdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh
+    networks:
+      - enterprise-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: enterprise-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - enterprise-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: enterprise-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - enterprise-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: enterprise-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    networks:
+      - enterprise-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: enterprise-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - enterprise-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Discovery Service
+  eureka:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    container_name: enterprise-eureka
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - enterprise-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Config Service
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: enterprise-config
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_SERVER: http://eureka:8761/eureka/
+    depends_on:
+      - eureka
+    networks:
+      - enterprise-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: enterprise-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_SERVER: http://eureka:8761/eureka/
+      REDIS_HOST: redis
+    depends_on:
+      - eureka
+      - redis
+    networks:
+      - enterprise-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Microservices
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: enterprise-user-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_NAME: userdb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER: http://eureka:8761/eureka/
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - eureka
+    networks:
+      - enterprise-network
+
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: enterprise-order-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_NAME: orderdb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER: http://eureka:8761/eureka/
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - eureka
+    networks:
+      - enterprise-network
+
+  inventory-service:
+    build:
+      context: ./services/inventory-service
+      dockerfile: Dockerfile
+    container_name: enterprise-inventory-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_NAME: inventorydb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER: http://eureka:8761/eureka/
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - eureka
+    networks:
+      - enterprise-network
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: enterprise-payment-service
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_NAME: paymentdb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER: http://eureka:8761/eureka/
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - eureka
+    networks:
+      - enterprise-network
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: enterprise-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - enterprise-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: enterprise-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - enterprise-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: enterprise-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - enterprise-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: enterprise-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - enterprise-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: enterprise-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    networks:
+      - enterprise-network
+
+networks:
+  enterprise-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:

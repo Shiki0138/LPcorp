@@ -1,0 +1,309 @@
+version: '3.9'
+
+services:
+  # Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: enterprise-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # Visualization
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: enterprise-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+
+  # Alerting
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    container_name: enterprise-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--cluster.advertise-address=0.0.0.0:9093'
+    volumes:
+      - ./infrastructure/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+
+  # Node Metrics Exporter
+  node-exporter:
+    image: prom/node-exporter:v1.6.0
+    container_name: enterprise-node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring-network
+
+  # Container Metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: enterprise-cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8090:8080"
+    networks:
+      - monitoring-network
+
+  # Logs Collection - Elasticsearch
+  elasticsearch:
+    image: elasticsearch:8.8.0
+    container_name: enterprise-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - cluster.name=enterprise-logs
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+
+  # Logs Processing - Logstash
+  logstash:
+    image: logstash:8.8.0
+    container_name: enterprise-logstash
+    volumes:
+      - ./infrastructure/monitoring/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./infrastructure/monitoring/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    ports:
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      LS_JAVA_OPTS: "-Xmx1g -Xms1g"
+    depends_on:
+      - elasticsearch
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # Logs Visualization - Kibana
+  kibana:
+    image: kibana:8.8.0
+    container_name: enterprise-kibana
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD:-changeme}
+      SERVER_NAME: kibana
+      SERVER_HOST: "0.0.0.0"
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+
+  # Distributed Tracing - Jaeger
+  jaeger:
+    image: jaegertracing/all-in-one:1.46
+    container_name: enterprise-jaeger
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: 9411
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+      - "9411:9411"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # Application Performance Monitoring
+  apm-server:
+    image: elastic/apm-server:8.8.0
+    container_name: enterprise-apm-server
+    environment:
+      - output.elasticsearch.hosts=["elasticsearch:9200"]
+      - apm-server.rum.enabled=true
+      - setup.kibana.host=kibana:5601
+      - setup.template.settings.index.number_of_replicas=0
+      - apm-server.kibana.enabled=true
+      - apm-server.kibana.host=kibana:5601
+    ports:
+      - "8200:8200"
+    depends_on:
+      - elasticsearch
+      - kibana
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # Redis Monitoring
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.52.0
+    container_name: enterprise-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
+    ports:
+      - "9121:9121"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # PostgreSQL Monitoring
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.13.2
+    container_name: enterprise-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # MongoDB Monitoring
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.39
+    container_name: enterprise-mongodb-exporter
+    command:
+      - --mongodb.uri=mongodb://${MONGO_USER:-mongo}:${MONGO_PASSWORD:-mongo}@mongodb:27017
+      - --collect-all
+    ports:
+      - "9216:9216"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # Kafka Monitoring
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: enterprise-kafka-exporter
+    command:
+      - --kafka.server=kafka:9092
+      - --web.listen-address=:9308
+    ports:
+      - "9308:9308"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+  # JMX Exporter for Java Services
+  jmx-exporter:
+    image: sscaling/jmx-prometheus-exporter:0.19.0
+    container_name: enterprise-jmx-exporter
+    environment:
+      SERVICE_PORT: 5556
+    volumes:
+      - ./infrastructure/monitoring/jmx/config.yml:/opt/jmx_exporter/config.yml:ro
+    ports:
+      - "5556:5556"
+    networks:
+      - monitoring-network
+      - enterprise-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  elasticsearch_data:
+
+networks:
+  monitoring-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+  enterprise-network:
+    external: true

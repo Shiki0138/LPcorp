@@ -1,0 +1,207 @@
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+    
+server:
+  port: ${SERVER_PORT:8080}
+  
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        # User Service Routes
+        - id: user-service
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - RewritePath=/api/v1/users(?<segment>.*), /api/v1/users${segment}
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackuri: forward:/fallback/user-service
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                
+        # Order Service Routes
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/api/v1/orders/**
+          filters:
+            - RewritePath=/api/v1/orders(?<segment>.*), /api/v1/orders${segment}
+            - name: CircuitBreaker
+              args:
+                name: order-service
+                fallbackuri: forward:/fallback/order-service
+                
+        # Inventory Service Routes
+        - id: inventory-service
+          uri: lb://INVENTORY-SERVICE
+          predicates:
+            - Path=/api/v1/inventory/**
+          filters:
+            - RewritePath=/api/v1/inventory(?<segment>.*), /api/v1/inventory${segment}
+            - name: CircuitBreaker
+              args:
+                name: inventory-service
+                fallbackuri: forward:/fallback/inventory-service
+                
+        # Payment Service Routes
+        - id: payment-service
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - RewritePath=/api/v1/payments(?<segment>.*), /api/v1/payments${segment}
+            - name: CircuitBreaker
+              args:
+                name: payment-service
+                fallbackuri: forward:/fallback/payment-service
+                
+        # Notification Service Routes
+        - id: notification-service
+          uri: lb://NOTIFICATION-SERVICE
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/notifications(?<segment>.*), /api/v1/notifications${segment}
+            
+        # Auth Service Routes
+        - id: auth-service
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - RewritePath=/api/v1/auth(?<segment>.*), /api/v1/auth${segment}
+            
+        # Analytics Service Routes
+        - id: analytics-service
+          uri: lb://ANALYTICS-SERVICE
+          predicates:
+            - Path=/api/v1/analytics/**
+          filters:
+            - RewritePath=/api/v1/analytics(?<segment>.*), /api/v1/analytics${segment}
+            
+        # Reporting Service Routes
+        - id: reporting-service
+          uri: lb://REPORTING-SERVICE
+          predicates:
+            - Path=/api/v1/reports/**
+          filters:
+            - RewritePath=/api/v1/reports(?<segment>.*), /api/v1/reports${segment}
+            
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:4200"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+            
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+        - AddResponseHeader=X-Response-Time, ${spring.cloud.gateway.routes[0].id}
+        
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2000ms
+    
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+      
+logging:
+  level:
+    com.enterprise.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    reactor.netty: INFO
+    
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+    instances:
+      user-service:
+        baseConfig: default
+      order-service:
+        baseConfig: default
+      inventory-service:
+        baseConfig: default
+      payment-service:
+        baseConfig: default
+        
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  cloud:
+    gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "https://enterprise.example.com"
+              - "https://app.enterprise.example.com"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+            
+logging:
+  level:
+    com.enterprise.gateway: INFO
+    org.springframework.cloud.gateway: INFO
+    reactor.netty: WARN

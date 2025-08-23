@@ -1,0 +1,929 @@
+openapi: 3.0.3
+info:
+  title: Customer Management API
+  description: |
+    Enterprise Customer Management API providing comprehensive customer lifecycle management,
+    including registration, profile management, segmentation, and analytics.
+  version: 1.0.0
+  contact:
+    name: API Support Team
+    email: api-support@enterprise.com
+  license:
+    name: Enterprise License
+    url: https://enterprise.com/api-license
+
+servers:
+  - url: https://api.enterprise.com/v1
+    description: Production server
+  - url: https://api-staging.enterprise.com/v1
+    description: Staging server
+  - url: https://api-dev.enterprise.com/v1
+    description: Development server
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+
+tags:
+  - name: Customers
+    description: Customer management operations
+  - name: Profiles
+    description: Customer profile operations
+  - name: Addresses
+    description: Customer address management
+  - name: Preferences
+    description: Customer preference management
+  - name: Segments
+    description: Customer segmentation
+
+paths:
+  /customers:
+    get:
+      tags:
+        - Customers
+      summary: List customers
+      description: Retrieve a paginated list of customers with filtering and sorting options
+      operationId: listCustomers
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: status
+          in: query
+          description: Filter by customer status
+          schema:
+            type: string
+            enum: [active, inactive, suspended]
+        - name: segment
+          in: query
+          description: Filter by customer segment
+          schema:
+            type: string
+        - name: createdAfter
+          in: query
+          description: Filter customers created after this date
+          schema:
+            type: string
+            format: date-time
+        - name: search
+          in: query
+          description: Search customers by name, email, or phone
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Customer list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    post:
+      tags:
+        - Customers
+      summary: Create customer
+      description: Register a new customer account
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Customer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            Location:
+              description: URL of the created customer
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /customers/{customerId}:
+    get:
+      tags:
+        - Customers
+      summary: Get customer
+      description: Retrieve detailed information about a specific customer
+      operationId: getCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - name: include
+          in: query
+          description: Include related resources
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [addresses, orders, preferences, segments]
+      responses:
+        '200':
+          description: Customer retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Customers
+      summary: Update customer
+      description: Update all customer information
+      operationId: updateCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    patch:
+      tags:
+        - Customers
+      summary: Partially update customer
+      description: Update specific customer fields
+      operationId: patchCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Customers
+      summary: Delete customer
+      description: Soft delete a customer account (GDPR compliant)
+      operationId: deleteCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - name: reason
+          in: query
+          description: Reason for deletion
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Customer deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /customers/{customerId}/addresses:
+    get:
+      tags:
+        - Addresses
+      summary: List customer addresses
+      description: Get all addresses for a customer
+      operationId: listCustomerAddresses
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: Address list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Address'
+
+    post:
+      tags:
+        - Addresses
+      summary: Add customer address
+      description: Add a new address to customer profile
+      operationId: createCustomerAddress
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAddressRequest'
+      responses:
+        '201':
+          description: Address created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+
+  /customers/{customerId}/addresses/{addressId}:
+    put:
+      tags:
+        - Addresses
+      summary: Update address
+      description: Update a customer address
+      operationId: updateCustomerAddress
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - $ref: '#/components/parameters/AddressId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAddressRequest'
+      responses:
+        '200':
+          description: Address updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+
+    delete:
+      tags:
+        - Addresses
+      summary: Delete address
+      description: Remove an address from customer profile
+      operationId: deleteCustomerAddress
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - $ref: '#/components/parameters/AddressId'
+      responses:
+        '204':
+          description: Address deleted successfully
+
+  /customers/{customerId}/preferences:
+    get:
+      tags:
+        - Preferences
+      summary: Get customer preferences
+      description: Retrieve customer communication and system preferences
+      operationId: getCustomerPreferences
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: Preferences retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPreferences'
+
+    put:
+      tags:
+        - Preferences
+      summary: Update preferences
+      description: Update customer preferences
+      operationId: updateCustomerPreferences
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreferencesRequest'
+      responses:
+        '200':
+          description: Preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPreferences'
+
+  /customers/{customerId}/verify:
+    post:
+      tags:
+        - Customers
+      summary: Verify customer
+      description: Trigger customer verification process (KYC)
+      operationId: verifyCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyCustomerRequest'
+      responses:
+        '200':
+          description: Verification initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+
+  /customers/{customerId}/export:
+    post:
+      tags:
+        - Customers
+      summary: Export customer data
+      description: Export all customer data (GDPR compliance)
+      operationId: exportCustomerData
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [json, csv, pdf]
+                includeHistory:
+                  type: boolean
+                  default: true
+      responses:
+        '202':
+          description: Export request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exportId:
+                    type: string
+                  status:
+                    type: string
+                  estimatedTime:
+                    type: integer
+                    description: Estimated time in seconds
+
+  /customer-segments:
+    get:
+      tags:
+        - Segments
+      summary: List customer segments
+      description: Get all defined customer segments
+      operationId: listCustomerSegments
+      responses:
+        '200':
+          description: Segments retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CustomerSegment'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      description: Customer unique identifier
+      schema:
+        type: string
+        format: uuid
+
+    AddressId:
+      name: addressId
+      in: path
+      required: true
+      description: Address unique identifier
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PerPageParam:
+      name: perPage
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    SortParam:
+      name: sort
+      in: query
+      description: Sort order (prefix with - for descending)
+      schema:
+        type: string
+        example: "-createdAt"
+
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/CustomerStatus'
+        tier:
+          $ref: '#/components/schemas/CustomerTier'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CustomerDetail:
+      allOf:
+        - $ref: '#/components/schemas/Customer'
+        - type: object
+          properties:
+            addresses:
+              type: array
+              items:
+                $ref: '#/components/schemas/Address'
+            preferences:
+              $ref: '#/components/schemas/CustomerPreferences'
+            segments:
+              type: array
+              items:
+                $ref: '#/components/schemas/CustomerSegment'
+            statistics:
+              $ref: '#/components/schemas/CustomerStatistics'
+
+    CreateCustomerRequest:
+      type: object
+      required:
+        - email
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 50
+        phoneNumber:
+          type: string
+          pattern: '^\+?[1-9]\d{1,14}$'
+        dateOfBirth:
+          type: string
+          format: date
+        password:
+          type: string
+          minLength: 8
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+        marketingConsent:
+          type: boolean
+          default: false
+        termsAccepted:
+          type: boolean
+          default: false
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/CustomerStatus'
+
+    PatchCustomerRequest:
+      type: object
+      minProperties: 1
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+
+    Address:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [billing, shipping, both]
+        isDefault:
+          type: boolean
+        line1:
+          type: string
+        line2:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAddressRequest:
+      type: object
+      required:
+        - type
+        - line1
+        - city
+        - state
+        - postalCode
+        - country
+      properties:
+        type:
+          type: string
+          enum: [billing, shipping, both]
+        isDefault:
+          type: boolean
+          default: false
+        line1:
+          type: string
+        line2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+
+    UpdateAddressRequest:
+      $ref: '#/components/schemas/CreateAddressRequest'
+
+    CustomerPreferences:
+      type: object
+      properties:
+        communication:
+          type: object
+          properties:
+            email:
+              type: object
+              properties:
+                marketing:
+                  type: boolean
+                transactional:
+                  type: boolean
+                newsletter:
+                  type: boolean
+            sms:
+              type: object
+              properties:
+                marketing:
+                  type: boolean
+                transactional:
+                  type: boolean
+            push:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                orderUpdates:
+                  type: boolean
+                promotions:
+                  type: boolean
+        display:
+          type: object
+          properties:
+            language:
+              type: string
+              pattern: '^[a-z]{2}-[A-Z]{2}$'
+            currency:
+              type: string
+              pattern: '^[A-Z]{3}$'
+            timezone:
+              type: string
+            dateFormat:
+              type: string
+              enum: [MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD]
+
+    UpdatePreferencesRequest:
+      $ref: '#/components/schemas/CustomerPreferences'
+
+    CustomerStatus:
+      type: string
+      enum:
+        - active
+        - inactive
+        - suspended
+        - pending_verification
+
+    CustomerTier:
+      type: string
+      enum:
+        - bronze
+        - silver
+        - gold
+        - platinum
+        - vip
+
+    CustomerSegment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        criteria:
+          type: object
+        customerCount:
+          type: integer
+        active:
+          type: boolean
+
+    CustomerStatistics:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        totalSpent:
+          type: number
+          format: decimal
+        averageOrderValue:
+          type: number
+          format: decimal
+        lastOrderDate:
+          type: string
+          format: date-time
+          nullable: true
+        lifetimeValue:
+          type: number
+          format: decimal
+
+    VerifyCustomerRequest:
+      type: object
+      required:
+        - verificationType
+        - documents
+      properties:
+        verificationType:
+          type: string
+          enum: [identity, address, both]
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [passport, drivers_license, national_id, utility_bill]
+              documentId:
+                type: string
+              issuingCountry:
+                type: string
+                pattern: '^[A-Z]{2}$'
+
+    VerificationResponse:
+      type: object
+      properties:
+        verificationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        estimatedTime:
+          type: integer
+          description: Estimated time in seconds
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        perPage:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    PaginationLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          format: uri
+        last:
+          type: string
+          format: uri
+        next:
+          type: string
+          format: uri
+          nullable: true
+        prev:
+          type: string
+          format: uri
+          nullable: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            path:
+              type: string
+            requestId:
+              type: string
+              format: uuid
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per hour
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Remaining requests
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: Reset timestamp
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

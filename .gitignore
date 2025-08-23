@@ -1,0 +1,283 @@
+
+# Compiled class file
+*.class
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs
+hs_err_pid*
+replay_pid*
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Spring Boot
+/spring-boot-starter-parent/
+spring-boot-starter-web/
+spring-boot-starter-test/
+spring-boot-starter-actuator/
+
+# Application specific
+application-local.yml
+application-local.properties
+application-*.yml
+application-*.properties
+!application-dev.yml
+!application-test.yml
+!application-prod.yml
+!application-docker.yml
+
+# Secrets and sensitive data
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+secrets/
+credentials/
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.h2.db
+*.mv.db
+*.trace.db
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*~
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+jacoco.exec
+jacoco/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Sonar
+.sonar/
+.scannerwork/
+sonar-project.properties.local
+
+# Node (for any frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# Monitoring and profiling
+*.jfr
+*.hprof
+flamegraph.svg
+
+# Generated files
+generated/
+**/generated/
+**/generated-sources/
+**/generated-test-sources/
+
+# Build artifacts
+dist/
+artifacts/
+output/
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+helm/charts/*.tgz
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# Backup files
+backup/
+backups/
+*.backup
+
+# SSL certificates (except examples)
+*.pem
+*.key
+*.csr
+*.crt
+*.cer
+*.pfx
+*.p12
+!examples/**/*.pem
+!examples/**/*.key
+!examples/**/*.crt
+
+# Local configuration overrides
+local.conf
+override.properties
+config.local.yml
+
+# Claude Flow generated files
+.claude/settings.local.json
+.mcp.json
+claude-flow.config.json
+.swarm/
+.hive-mind/
+memory/claude-flow-data.json
+memory/sessions/*
+!memory/sessions/README.md
+memory/agents/*
+!memory/agents/README.md
+coordination/memory_bank/*
+coordination/subtasks/*
+coordination/orchestration/*
+*.db-journal
+*.db-wal
+*.sqlite-journal
+*.sqlite-wal
+claude-flow
+claude-flow.bat
+claude-flow.ps1
+hive-mind-prompt-*.txt

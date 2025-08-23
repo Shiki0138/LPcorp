@@ -1,0 +1,399 @@
+# Redis Master-Slave Configuration with Sentinel
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: production
+data:
+  master.conf: |
+    # Redis Master Configuration
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+    requirepass CHANGE_ME_REDIS_PASSWORD
+    
+    # Persistence
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    
+    # AOF
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    
+    # Memory management
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    
+    # Slow log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    
+    # Client settings
+    tcp-keepalive 300
+    timeout 0
+    tcp-backlog 511
+    
+    # Performance
+    hz 10
+    databases 16
+    
+  replica.conf: |
+    # Redis Replica Configuration
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+    requirepass CHANGE_ME_REDIS_PASSWORD
+    masterauth CHANGE_ME_REDIS_PASSWORD
+    
+    # Replication
+    replicaof redis-master 6379
+    replica-read-only yes
+    replica-serve-stale-data yes
+    
+    # Persistence (replicas also persist data)
+    save 900 1
+    save 300 10
+    save 60 10000
+    dbfilename dump.rdb
+    dir /data
+    
+    # Memory management
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    
+  sentinel.conf: |
+    # Redis Sentinel Configuration
+    port 26379
+    bind 0.0.0.0
+    
+    # Monitor master
+    sentinel monitor mymaster redis-master 6379 2
+    sentinel auth-pass mymaster CHANGE_ME_REDIS_PASSWORD
+    
+    # Timeouts
+    sentinel down-after-milliseconds mymaster 5000
+    sentinel parallel-syncs mymaster 1
+    sentinel failover-timeout mymaster 10000
+    
+    # Notification
+    sentinel notification-script mymaster /scripts/notify.sh
+---
+# Redis Master Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-master
+  namespace: production
+  labels:
+    app: redis
+    role: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      role: master
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: master
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "2Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis/redis.conf
+          subPath: master.conf
+        - name: redis-data
+          mountPath: /data
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.54.0
+        ports:
+        - name: metrics
+          containerPort: 9121
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secrets
+              key: redis-password
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+      nodeSelector:
+        workload: data
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-master-pvc
+---
+# Redis Replica Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-replica
+  namespace: production
+  labels:
+    app: redis
+    role: replica
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redis
+      role: replica
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: replica
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - name: redis
+          containerPort: 6379
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "1Gi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis/redis.conf
+          subPath: replica.conf
+        - name: redis-data
+          mountPath: /data
+      nodeSelector:
+        workload: data
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - redis
+              topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+      - name: redis-data
+        emptyDir: {}
+---
+# Redis Sentinel Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-sentinel
+  namespace: production
+  labels:
+    app: redis
+    role: sentinel
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+      role: sentinel
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: sentinel
+    spec:
+      containers:
+      - name: sentinel
+        image: redis:7-alpine
+        command:
+        - redis-sentinel
+        - /etc/redis/sentinel.conf
+        ports:
+        - name: sentinel
+          containerPort: 26379
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis/sentinel.conf
+          subPath: sentinel.conf
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - redis
+              - key: role
+                operator: In
+                values:
+                - sentinel
+            topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+---
+# Redis Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: production
+  labels:
+    app: redis
+    role: master
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+    role: master
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-replica
+  namespace: production
+  labels:
+    app: redis
+    role: replica
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+    role: replica
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel
+  namespace: production
+  labels:
+    app: redis
+    role: sentinel
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+    role: sentinel
+  ports:
+  - name: sentinel
+    port: 26379
+    targetPort: sentinel
+    protocol: TCP
+---
+# PersistentVolumeClaim for Redis Master
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-master-pvc
+  namespace: production
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-encrypted
+  resources:
+    requests:
+      storage: 20Gi

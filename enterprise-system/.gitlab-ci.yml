@@ -1,0 +1,170 @@
+stages:
+  - build
+  - test
+  - security-scan
+  - package
+  - deploy-staging
+  - integration-tests
+  - deploy-production
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+cache:
+  paths:
+    - .m2/repository/
+    - target/
+
+# Build stage
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn clean compile
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+
+# Test stage
+unit-tests:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn test
+  artifacts:
+    reports:
+      junit:
+        - '**/target/surefire-reports/TEST-*.xml'
+    paths:
+      - target/jacoco.exec
+    expire_in: 1 week
+
+code-coverage:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn verify
+    - mvn jacoco:report
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  artifacts:
+    paths:
+      - target/site/jacoco/
+    expire_in: 1 week
+
+# Security scanning
+security-scan:
+  stage: security-scan
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn dependency-check:check
+  artifacts:
+    reports:
+      dependency_scanning: target/dependency-check-report.json
+  allow_failure: true
+
+sonarqube:
+  stage: security-scan
+  image: maven:3.9-eclipse-temurin-17
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - mvn sonar:sonar 
+        -Dsonar.projectKey=$CI_PROJECT_NAME 
+        -Dsonar.host.url=$SONAR_HOST_URL 
+        -Dsonar.login=$SONAR_TOKEN
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Package stage
+build-docker-images:
+  stage: package
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA api-gateway/
+    - docker build -t $CI_REGISTRY_IMAGE/user-service:$CI_COMMIT_SHA services/user-service/
+    - docker build -t $CI_REGISTRY_IMAGE/order-service:$CI_COMMIT_SHA services/order-service/
+    - docker build -t $CI_REGISTRY_IMAGE/inventory-service:$CI_COMMIT_SHA services/inventory-service/
+    - docker build -t $CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA services/payment-service/
+    - docker push $CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/user-service:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/order-service:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/inventory-service:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA
+  only:
+    - develop
+    - main
+
+# Deploy to staging
+deploy-staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl config use-context $K8S_STAGING_CONTEXT
+    - kubectl set image deployment/api-gateway api-gateway=$CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA -n enterprise-staging
+    - kubectl set image deployment/user-service user-service=$CI_REGISTRY_IMAGE/user-service:$CI_COMMIT_SHA -n enterprise-staging
+    - kubectl set image deployment/order-service order-service=$CI_REGISTRY_IMAGE/order-service:$CI_COMMIT_SHA -n enterprise-staging
+    - kubectl set image deployment/inventory-service inventory-service=$CI_REGISTRY_IMAGE/inventory-service:$CI_COMMIT_SHA -n enterprise-staging
+    - kubectl set image deployment/payment-service payment-service=$CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA -n enterprise-staging
+    - kubectl rollout status deployment/api-gateway -n enterprise-staging
+    - kubectl rollout status deployment/user-service -n enterprise-staging
+    - kubectl rollout status deployment/order-service -n enterprise-staging
+    - kubectl rollout status deployment/inventory-service -n enterprise-staging
+    - kubectl rollout status deployment/payment-service -n enterprise-staging
+  environment:
+    name: staging
+    url: https://staging.enterprise.example.com
+  only:
+    - develop
+
+# Integration tests
+integration-tests:
+  stage: integration-tests
+  image: maven:3.9-eclipse-temurin-17
+  services:
+    - docker:dind
+  script:
+    - cd tests/integration
+    - mvn test -Dtest.environment=staging
+  artifacts:
+    reports:
+      junit:
+        - 'tests/integration/target/surefire-reports/TEST-*.xml'
+  only:
+    - develop
+
+# Deploy to production
+deploy-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl config use-context $K8S_PRODUCTION_CONTEXT
+    - kubectl set image deployment/api-gateway api-gateway=$CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA -n enterprise-production
+    - kubectl set image deployment/user-service user-service=$CI_REGISTRY_IMAGE/user-service:$CI_COMMIT_SHA -n enterprise-production
+    - kubectl set image deployment/order-service order-service=$CI_REGISTRY_IMAGE/order-service:$CI_COMMIT_SHA -n enterprise-production
+    - kubectl set image deployment/inventory-service inventory-service=$CI_REGISTRY_IMAGE/inventory-service:$CI_COMMIT_SHA -n enterprise-production
+    - kubectl set image deployment/payment-service payment-service=$CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA -n enterprise-production
+    - kubectl rollout status deployment/api-gateway -n enterprise-production
+    - kubectl rollout status deployment/user-service -n enterprise-production
+    - kubectl rollout status deployment/order-service -n enterprise-production
+    - kubectl rollout status deployment/inventory-service -n enterprise-production
+    - kubectl rollout status deployment/payment-service -n enterprise-production
+  environment:
+    name: production
+    url: https://enterprise.example.com
+  when: manual
+  only:
+    - main

@@ -1,0 +1,89 @@
+# Staging Applications
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: enterprise-system-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: staging
+  source:
+    repoURL: https://github.com/enterprise/k8s-manifests
+    targetRevision: staging
+    path: helm/enterprise-system
+    helm:
+      valueFiles:
+      - values.yaml
+      - values-staging.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=false
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 5
+---
+# Flagger for Canary Deployments in Staging
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flagger-staging
+  namespace: argocd
+spec:
+  project: staging
+  source:
+    repoURL: https://flagger.app
+    targetRevision: 1.x.x
+    chart: flagger
+    helm:
+      values: |
+        metricsServer: http://prometheus.monitoring:9090
+        meshProvider: istio
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+# Load Testing Tools for Staging
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: load-testing-staging
+  namespace: argocd
+spec:
+  project: staging
+  source:
+    repoURL: https://github.com/enterprise/k8s-manifests
+    targetRevision: staging
+    path: testing/load-testing
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    manual: {}  # Manual sync for load testing

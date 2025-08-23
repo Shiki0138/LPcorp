@@ -1,0 +1,61 @@
+# Namespace Configuration for Enterprise System
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    env: development
+    istio-injection: disabled
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    env: staging
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    env: production
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infrastructure
+  labels:
+    env: infrastructure
+    purpose: cluster-services
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    env: monitoring
+    purpose: observability
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security
+  labels:
+    env: security
+    purpose: security-tools
+    pod-security.kubernetes.io/enforce: restricted

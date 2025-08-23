@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: enterprise-system
+  labels:
+    name: enterprise-system
+    environment: production

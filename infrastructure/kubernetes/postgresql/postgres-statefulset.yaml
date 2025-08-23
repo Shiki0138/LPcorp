@@ -1,0 +1,376 @@
+# PostgreSQL High Availability Cluster
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: production
+data:
+  postgresql.conf: |
+    # Connection settings
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    superuser_reserved_connections = 3
+    
+    # Memory settings
+    shared_buffers = 1GB
+    effective_cache_size = 3GB
+    maintenance_work_mem = 256MB
+    work_mem = 5MB
+    
+    # Checkpoint settings
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    checkpoint_timeout = 10min
+    max_wal_size = 2GB
+    min_wal_size = 512MB
+    
+    # Write ahead log
+    wal_level = replica
+    wal_log_hints = on
+    archive_mode = on
+    archive_command = 'test ! -f /backup/%f && cp %p /backup/%f'
+    max_wal_senders = 10
+    wal_keep_size = 128MB
+    hot_standby = on
+    
+    # Replication
+    max_replication_slots = 10
+    synchronous_commit = on
+    synchronous_standby_names = '*'
+    
+    # Query tuning
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Logging
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = '/var/log/postgresql'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = 1000  # Log slow queries (> 1s)
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_lock_waits = on
+    log_temp_files = 0
+    
+    # Autovacuum
+    autovacuum = on
+    autovacuum_max_workers = 4
+    autovacuum_naptime = 30s
+    
+    # Security
+    ssl = on
+    ssl_cert_file = '/etc/postgresql/tls/tls.crt'
+    ssl_key_file = '/etc/postgresql/tls/tls.key'
+    
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    local   all             all                                     trust
+    host    all             all             127.0.0.1/32            trust
+    host    all             all             ::1/128                 trust
+    host    all             all             10.0.0.0/8              md5
+    host    replication     replicator      10.0.0.0/8              md5
+    hostssl all             all             0.0.0.0/0               md5
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-primary
+  namespace: production
+  labels:
+    app: postgres
+    role: primary
+spec:
+  serviceName: postgres-primary
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+      role: primary
+  template:
+    metadata:
+      labels:
+        app: postgres
+        role: primary
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - name: postgres
+          containerPort: 5432
+          protocol: TCP
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: postgres-password
+        - name: POSTGRES_DB
+          value: enterprise_db
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "--encoding=UTF8 --data-checksums"
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+          limits:
+            cpu: "4000m"
+            memory: "8Gi"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-config
+          mountPath: /etc/postgresql/pg_hba.conf
+          subPath: pg_hba.conf
+        - name: postgres-tls
+          mountPath: /etc/postgresql/tls
+          readOnly: true
+        - name: backup
+          mountPath: /backup
+      - name: postgres-exporter
+        image: prometheuscommunity/postgres-exporter:v0.13.2
+        ports:
+        - name: metrics
+          containerPort: 9187
+        env:
+        - name: DATA_SOURCE_NAME
+          value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=disable"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: postgres-password
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      nodeSelector:
+        workload: data
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - postgres
+            topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: data-intensive
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+      - name: postgres-tls
+        secret:
+          secretName: postgres-tls
+      - name: backup
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp3-encrypted
+      resources:
+        requests:
+          storage: 100Gi
+---
+# PostgreSQL Replica StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-replica
+  namespace: production
+  labels:
+    app: postgres
+    role: replica
+spec:
+  serviceName: postgres-replica
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres
+      role: replica
+  template:
+    metadata:
+      labels:
+        app: postgres
+        role: replica
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      initContainers:
+      - name: pg-basebackup
+        image: postgres:15-alpine
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: replication-password
+        command:
+        - /bin/bash
+        - -c
+        - |
+          if [ ! -f /var/lib/postgresql/data/pgdata/PG_VERSION ]; then
+            pg_basebackup -h postgres-primary -D /var/lib/postgresql/data/pgdata -U replicator -v -P -W
+            echo "standby_mode = 'on'" >> /var/lib/postgresql/data/pgdata/recovery.conf
+            echo "primary_conninfo = 'host=postgres-primary port=5432 user=replicator'" >> /var/lib/postgresql/data/pgdata/recovery.conf
+            echo "trigger_file = '/tmp/promote_to_primary'" >> /var/lib/postgresql/data/pgdata/recovery.conf
+          fi
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - name: postgres
+          containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: postgres-password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+      nodeSelector:
+        workload: data
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp3-encrypted
+      resources:
+        requests:
+          storage: 100Gi
+---
+# PostgreSQL Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary
+  namespace: production
+  labels:
+    app: postgres
+    role: primary
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+    role: primary
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-replica
+  namespace: production
+  labels:
+    app: postgres
+    role: replica
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+    role: replica
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+    protocol: TCP
+---
+# PostgreSQL Read-Only Service (Load balanced across replicas)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-read
+  namespace: production
+  labels:
+    app: postgres
+    type: read-only
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+    protocol: TCP

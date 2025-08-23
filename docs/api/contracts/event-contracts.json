@@ -1,0 +1,509 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Enterprise Event Contracts",
+  "description": "Event schemas for asynchronous communication",
+  "version": "1.0.0",
+  
+  "events": {
+    "order": {
+      "order.created": {
+        "description": "Fired when a new order is created",
+        "channel": "orders.created",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique event identifier"
+            },
+            "eventType": {
+              "type": "string",
+              "const": "order.created"
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+$"
+            },
+            "data": {
+              "type": "object",
+              "required": ["orderId", "customerId", "totalAmount", "currency", "items"],
+              "properties": {
+                "orderId": {"type": "string", "format": "uuid"},
+                "orderNumber": {"type": "string"},
+                "customerId": {"type": "string", "format": "uuid"},
+                "totalAmount": {"type": "number", "minimum": 0},
+                "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["productId", "quantity", "price"],
+                    "properties": {
+                      "productId": {"type": "string", "format": "uuid"},
+                      "variantId": {"type": "string", "format": "uuid"},
+                      "quantity": {"type": "integer", "minimum": 1},
+                      "price": {"type": "number", "minimum": 0}
+                    }
+                  }
+                },
+                "shippingAddress": {"$ref": "#/definitions/Address"},
+                "billingAddress": {"$ref": "#/definitions/Address"}
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "source": {"type": "string"},
+                "correlationId": {"type": "string", "format": "uuid"},
+                "userId": {"type": "string", "format": "uuid"},
+                "sessionId": {"type": "string"},
+                "ipAddress": {"type": "string", "format": "ipv4"}
+              }
+            }
+          }
+        }
+      },
+      
+      "order.status.changed": {
+        "description": "Fired when order status changes",
+        "channel": "orders.status.changed",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "order.status.changed"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["orderId", "previousStatus", "currentStatus"],
+              "properties": {
+                "orderId": {"type": "string", "format": "uuid"},
+                "previousStatus": {"$ref": "#/definitions/OrderStatus"},
+                "currentStatus": {"$ref": "#/definitions/OrderStatus"},
+                "reason": {"type": "string"},
+                "updatedBy": {"type": "string"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      },
+      
+      "order.cancelled": {
+        "description": "Fired when an order is cancelled",
+        "channel": "orders.cancelled",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "order.cancelled"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["orderId", "reason", "refundAmount"],
+              "properties": {
+                "orderId": {"type": "string", "format": "uuid"},
+                "reason": {
+                  "type": "string",
+                  "enum": ["customer_request", "out_of_stock", "fraud", "other"]
+                },
+                "refundAmount": {"type": "number", "minimum": 0},
+                "refundStatus": {"type": "string"},
+                "cancelledBy": {"type": "string"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      }
+    },
+    
+    "payment": {
+      "payment.processed": {
+        "description": "Fired when payment is successfully processed",
+        "channel": "payments.processed",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "payment.processed"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["paymentId", "orderId", "amount", "currency", "method"],
+              "properties": {
+                "paymentId": {"type": "string", "format": "uuid"},
+                "orderId": {"type": "string", "format": "uuid"},
+                "amount": {"type": "number", "minimum": 0},
+                "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+                "method": {"$ref": "#/definitions/PaymentMethod"},
+                "transactionId": {"type": "string"},
+                "gateway": {"type": "string"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      },
+      
+      "payment.failed": {
+        "description": "Fired when payment fails",
+        "channel": "payments.failed",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "payment.failed"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["paymentId", "orderId", "amount", "failureReason"],
+              "properties": {
+                "paymentId": {"type": "string", "format": "uuid"},
+                "orderId": {"type": "string", "format": "uuid"},
+                "amount": {"type": "number", "minimum": 0},
+                "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+                "method": {"$ref": "#/definitions/PaymentMethod"},
+                "failureReason": {"type": "string"},
+                "failureCode": {"type": "string"},
+                "retryable": {"type": "boolean"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      }
+    },
+    
+    "inventory": {
+      "inventory.reserved": {
+        "description": "Fired when inventory is reserved for an order",
+        "channel": "inventory.reserved",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "inventory.reserved"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["reservationId", "orderId", "items", "expiresAt"],
+              "properties": {
+                "reservationId": {"type": "string", "format": "uuid"},
+                "orderId": {"type": "string", "format": "uuid"},
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["productId", "quantity", "locationId"],
+                    "properties": {
+                      "productId": {"type": "string", "format": "uuid"},
+                      "variantId": {"type": "string", "format": "uuid"},
+                      "quantity": {"type": "integer", "minimum": 1},
+                      "locationId": {"type": "string", "format": "uuid"}
+                    }
+                  }
+                },
+                "expiresAt": {"type": "string", "format": "date-time"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      },
+      
+      "inventory.low": {
+        "description": "Fired when inventory falls below reorder point",
+        "channel": "inventory.low",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "inventory.low"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["productId", "currentLevel", "reorderPoint", "locationId"],
+              "properties": {
+                "productId": {"type": "string", "format": "uuid"},
+                "variantId": {"type": "string", "format": "uuid"},
+                "sku": {"type": "string"},
+                "currentLevel": {"type": "integer", "minimum": 0},
+                "reorderPoint": {"type": "integer", "minimum": 0},
+                "reorderQuantity": {"type": "integer", "minimum": 0},
+                "locationId": {"type": "string", "format": "uuid"}
+              }
+            },
+            "metadata": {
+              "allOf": [
+                {"$ref": "#/definitions/EventMetadata"},
+                {
+                  "type": "object",
+                  "properties": {
+                    "priority": {
+                      "type": "string",
+                      "enum": ["low", "medium", "high", "critical"]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    
+    "customer": {
+      "customer.created": {
+        "description": "Fired when a new customer registers",
+        "channel": "customers.created",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "customer.created"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["customerId", "email"],
+              "properties": {
+                "customerId": {"type": "string", "format": "uuid"},
+                "email": {"type": "string", "format": "email"},
+                "firstName": {"type": "string"},
+                "lastName": {"type": "string"},
+                "source": {"type": "string"},
+                "marketingConsent": {"type": "boolean"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      },
+      
+      "customer.verified": {
+        "description": "Fired when customer completes verification",
+        "channel": "customers.verified",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "customer.verified"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["customerId", "verificationType", "verificationLevel"],
+              "properties": {
+                "customerId": {"type": "string", "format": "uuid"},
+                "verificationType": {
+                  "type": "string",
+                  "enum": ["email", "phone", "identity", "address"]
+                },
+                "verificationLevel": {
+                  "type": "string",
+                  "enum": ["basic", "enhanced", "full"]
+                },
+                "verifiedAt": {"type": "string", "format": "date-time"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      }
+    },
+    
+    "shipment": {
+      "shipment.dispatched": {
+        "description": "Fired when shipment is dispatched",
+        "channel": "shipments.dispatched",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "shipment.dispatched"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["shipmentId", "orderId", "trackingNumber", "carrier"],
+              "properties": {
+                "shipmentId": {"type": "string", "format": "uuid"},
+                "orderId": {"type": "string", "format": "uuid"},
+                "trackingNumber": {"type": "string"},
+                "carrier": {"type": "string"},
+                "service": {"type": "string"},
+                "estimatedDelivery": {"type": "string", "format": "date"},
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "orderItemId": {"type": "string", "format": "uuid"},
+                      "quantity": {"type": "integer", "minimum": 1}
+                    }
+                  }
+                }
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      },
+      
+      "shipment.delivered": {
+        "description": "Fired when shipment is delivered",
+        "channel": "shipments.delivered",
+        "schema": {
+          "type": "object",
+          "required": ["eventId", "eventType", "timestamp", "version", "data"],
+          "properties": {
+            "eventId": {"type": "string", "format": "uuid"},
+            "eventType": {"type": "string", "const": "shipment.delivered"},
+            "timestamp": {"type": "string", "format": "date-time"},
+            "version": {"type": "string"},
+            "data": {
+              "type": "object",
+              "required": ["shipmentId", "orderId", "deliveredAt"],
+              "properties": {
+                "shipmentId": {"type": "string", "format": "uuid"},
+                "orderId": {"type": "string", "format": "uuid"},
+                "deliveredAt": {"type": "string", "format": "date-time"},
+                "signedBy": {"type": "string"},
+                "deliveryLocation": {"type": "string"},
+                "proofOfDelivery": {"type": "string", "format": "uri"}
+              }
+            },
+            "metadata": {"$ref": "#/definitions/EventMetadata"}
+          }
+        }
+      }
+    }
+  },
+  
+  "definitions": {
+    "EventMetadata": {
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "correlationId": {"type": "string", "format": "uuid"},
+        "causationId": {"type": "string", "format": "uuid"},
+        "userId": {"type": "string", "format": "uuid"},
+        "sessionId": {"type": "string"},
+        "ipAddress": {"type": "string", "format": "ipv4"},
+        "userAgent": {"type": "string"}
+      }
+    },
+    
+    "Address": {
+      "type": "object",
+      "required": ["line1", "city", "state", "postalCode", "country"],
+      "properties": {
+        "line1": {"type": "string"},
+        "line2": {"type": "string"},
+        "city": {"type": "string"},
+        "state": {"type": "string"},
+        "postalCode": {"type": "string"},
+        "country": {"type": "string", "pattern": "^[A-Z]{2}$"}
+      }
+    },
+    
+    "OrderStatus": {
+      "type": "string",
+      "enum": ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"]
+    },
+    
+    "PaymentMethod": {
+      "type": "string",
+      "enum": ["credit_card", "debit_card", "paypal", "apple_pay", "google_pay", "bank_transfer"]
+    }
+  },
+  
+  "eventStore": {
+    "retention": {
+      "default": "90 days",
+      "compliance": "7 years",
+      "analytics": "2 years"
+    },
+    
+    "partitioning": {
+      "strategy": "by-aggregate-id",
+      "partitions": 32
+    },
+    
+    "ordering": {
+      "guarantee": "per-partition",
+      "timestamp": "event-time"
+    },
+    
+    "delivery": {
+      "guarantee": "at-least-once",
+      "retry": {
+        "maxAttempts": 5,
+        "backoff": "exponential",
+        "deadLetter": true
+      }
+    }
+  },
+  
+  "eventSourcing": {
+    "aggregates": [
+      {
+        "name": "Order",
+        "events": [
+          "order.created",
+          "order.updated",
+          "order.status.changed",
+          "order.cancelled",
+          "order.completed"
+        ],
+        "projections": [
+          "OrderSummary",
+          "OrderHistory",
+          "CustomerOrderList"
+        ]
+      },
+      {
+        "name": "Customer",
+        "events": [
+          "customer.created",
+          "customer.updated",
+          "customer.verified",
+          "customer.suspended",
+          "customer.reactivated"
+        ],
+        "projections": [
+          "CustomerProfile",
+          "CustomerStatistics"
+        ]
+      }
+    ],
+    
+    "snapshots": {
+      "frequency": 100,
+      "storage": "s3",
+      "compression": "gzip"
+    }
+  }
+}

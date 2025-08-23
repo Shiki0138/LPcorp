@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.enterprise.security</groupId>
+    <artifactId>mfa-system</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Enterprise MFA System</name>
+    <description>Comprehensive Multi-Factor Authentication System</description>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.1.5</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- WebAuthn -->
+        <webauthn.version>2.1.0</webauthn.version>
+        
+        <!-- QR Code Generation -->
+        <zxing.version>3.5.2</zxing.version>
+        
+        <!-- Commons -->
+        <commons-codec.version>1.16.0</commons-codec.version>
+        
+        <!-- Test Dependencies -->
+        <junit.version>5.10.0</junit.version>
+        <mockito.version>5.5.0</mockito.version>
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- WebAuthn/FIDO2 Support -->
+        <dependency>
+            <groupId>com.yubico</groupId>
+            <artifactId>webauthn-server-core</artifactId>
+            <version>${webauthn.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.yubico</groupId>
+            <artifactId>webauthn-server-attestation</artifactId>
+            <version>${webauthn.version}</version>
+        </dependency>
+
+        <!-- QR Code Generation for TOTP -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>${zxing.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>${zxing.version}</version>
+        </dependency>
+
+        <!-- Apache Commons for Base32 encoding -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>${commons-codec.version}</version>
+        </dependency>
+
+        <!-- Database -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        
+        <!-- For production use -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- JSON Processing -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- SMS Provider Dependencies -->
+        <!-- Twilio SMS -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>9.14.1</version>
+            <optional>true</optional>
+        </dependency>
+        
+        <!-- AWS SNS for SMS -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sns</artifactId>
+            <version>2.21.29</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Monitoring and Metrics -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Development Tools -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-configuration-processor</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- Code Coverage -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.10</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- Security Scanning -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>8.4.0</version>
+                <configuration>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <suppressionFiles>
+                        <suppressionFile>owasp-suppressions.xml</suppressionFile>
+                    </suppressionFiles>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Development Profile -->
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <spring.profiles.active>dev</spring.profiles.active>
+            </properties>
+        </profile>
+        
+        <!-- Production Profile -->
+        <profile>
+            <id>prod</id>
+            <properties>
+                <spring.profiles.active>prod</spring.profiles.active>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-maven-plugin</artifactId>
+                        <configuration>
+                            <layers>
+                                <enabled>true</enabled>
+                            </layers>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <!-- Security Testing Profile -->
+        <profile>
+            <id>security</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

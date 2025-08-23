@@ -1,0 +1,146 @@
+# ArgoCD App of Apps Pattern
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: enterprise-system-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/enterprise/k8s-manifests
+    targetRevision: HEAD
+    path: argocd/applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+# ArgoCD Project for Production
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: production
+  namespace: argocd
+spec:
+  description: Production applications
+  sourceRepos:
+  - 'https://github.com/enterprise/*'
+  - 'https://charts.bitnami.com/bitnami'
+  - 'https://charts.konghq.com'
+  - 'https://prometheus-community.github.io/helm-charts'
+  - 'https://grafana.github.io/helm-charts'
+  destinations:
+  - namespace: production
+    server: https://kubernetes.default.svc
+  - namespace: infrastructure
+    server: https://kubernetes.default.svc
+  - namespace: monitoring
+    server: https://kubernetes.default.svc
+  - namespace: kong
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRole
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  roles:
+  - name: admin
+    policies:
+    - p, proj:production:admin, applications, *, production/*, allow
+    - p, proj:production:admin, repositories, *, *, allow
+    groups:
+    - enterprise:platform-team
+  - name: developer
+    policies:
+    - p, proj:production:developer, applications, get, production/*, allow
+    - p, proj:production:developer, applications, sync, production/*, allow
+    groups:
+    - enterprise:developers
+---
+# ArgoCD Project for Staging
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: staging
+  namespace: argocd
+spec:
+  description: Staging applications
+  sourceRepos:
+  - 'https://github.com/enterprise/*'
+  - 'https://charts.bitnami.com/bitnami'
+  - 'https://charts.konghq.com'
+  - 'https://prometheus-community.github.io/helm-charts'
+  - 'https://grafana.github.io/helm-charts'
+  destinations:
+  - namespace: staging
+    server: https://kubernetes.default.svc
+  - namespace: infrastructure
+    server: https://kubernetes.default.svc
+  - namespace: monitoring
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  roles:
+  - name: admin
+    policies:
+    - p, proj:staging:admin, applications, *, staging/*, allow
+    - p, proj:staging:admin, repositories, *, *, allow
+    groups:
+    - enterprise:platform-team
+  - name: developer
+    policies:
+    - p, proj:staging:developer, applications, *, staging/*, allow
+    groups:
+    - enterprise:developers
+---
+# ArgoCD Project for Development
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: development
+  namespace: argocd
+spec:
+  description: Development applications
+  sourceRepos:
+  - '*'
+  destinations:
+  - namespace: '*'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  roles:
+  - name: admin
+    policies:
+    - p, proj:development:admin, applications, *, development/*, allow
+    - p, proj:development:admin, repositories, *, *, allow
+    groups:
+    - enterprise:platform-team
+    - enterprise:developers

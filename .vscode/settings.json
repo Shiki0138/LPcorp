@@ -1,0 +1,119 @@
+{
+    // Editor settings
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+    "editor.rulers": [120],
+    
+    // Java settings
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.server.launchMode": "Standard",
+    "java.dependency.syncWithFolderExplorer": true,
+    "java.saveActions.organizeImports": true,
+    "java.completion.importOrder": [
+        "",
+        "java",
+        "javax",
+        "org",
+        "com"
+    ],
+    
+    // Maven settings
+    "maven.pomfile.autoUpdateEffectivePOM": true,
+    "maven.executable.preferMavenWrapper": true,
+    
+    // Spring Boot settings
+    "spring-boot.ls.java.home": null,
+    "spring.initializr.defaultLanguage": "Java",
+    "spring.initializr.defaultJavaVersion": "17",
+    "spring.initializr.defaultPackaging": "Jar",
+    
+    // Files to exclude
+    "files.exclude": {
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true,
+        "**/target": false,
+        "**/.idea": true,
+        "**/*.iml": true
+    },
+    
+    // Search exclusions
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/target": true,
+        "**/build": true,
+        "**/dist": true,
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true
+    },
+    
+    // Java test runner
+    "java.test.config": {
+        "workingDirectory": "${workspaceFolder}"
+    },
+    "java.test.defaultConfig": "default",
+    
+    // Checkstyle
+    "java.checkstyle.configuration": "${workspaceFolder}/checkstyle.xml",
+    "java.checkstyle.autocheck": true,
+    
+    // Terminal settings
+    "terminal.integrated.env.osx": {
+        "JAVA_HOME": "${env:JAVA_HOME}"
+    },
+    "terminal.integrated.env.linux": {
+        "JAVA_HOME": "${env:JAVA_HOME}"
+    },
+    "terminal.integrated.env.windows": {
+        "JAVA_HOME": "${env:JAVA_HOME}"
+    },
+    
+    // Git settings
+    "git.confirmSync": false,
+    "git.autofetch": true,
+    
+    // XML formatting
+    "[xml]": {
+        "editor.defaultFormatter": "redhat.vscode-xml"
+    },
+    "xml.format.splitAttributes": true,
+    
+    // YAML settings
+    "[yaml]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "keep"
+    },
+    
+    // Properties files
+    "[properties]": {
+        "editor.suggest.insertMode": "replace"
+    },
+    
+    // Markdown settings
+    "[markdown]": {
+        "editor.wordWrap": "on",
+        "editor.quickSuggestions": {
+            "comments": "off",
+            "strings": "off",
+            "other": "off"
+        }
+    },
+    
+    // Docker settings
+    "docker.attachShellCommand.linuxContainer": "/bin/bash",
+    "docker.containers.label": "ContainerName",
+    "docker.containers.sortBy": "Label",
+    
+    // Task definitions
+    "tasks.version": "2.0.0",
+    "tasks.tasks": []
+}

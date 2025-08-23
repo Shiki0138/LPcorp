@@ -1,0 +1,749 @@
+# Enterprise GraphQL Schema
+# This schema provides a unified API for all enterprise operations
+
+scalar DateTime
+scalar Date
+scalar Currency
+scalar Decimal
+scalar UUID
+scalar JSON
+scalar URL
+scalar Email
+
+# Root Query Type
+type Query {
+  # Customer Queries
+  customer(id: UUID!): Customer
+  customers(
+    first: Int
+    after: String
+    last: Int
+    before: String
+    filter: CustomerFilter
+    sort: CustomerSort
+  ): CustomerConnection!
+  searchCustomers(query: String!, limit: Int = 10): [CustomerSearchResult!]!
+  
+  # Order Queries
+  order(id: UUID!): Order
+  orders(
+    first: Int
+    after: String
+    filter: OrderFilter
+    sort: OrderSort
+  ): OrderConnection!
+  orderTimeline(orderId: UUID!): [OrderEvent!]!
+  
+  # Product Queries
+  product(id: UUID!): Product
+  products(
+    first: Int
+    after: String
+    filter: ProductFilter
+    sort: ProductSort
+  ): ProductConnection!
+  searchProducts(input: ProductSearchInput!): ProductSearchResult!
+  productRecommendations(productId: UUID!, limit: Int = 5): [Product!]!
+  
+  # Category Queries
+  category(id: UUID!): Category
+  categories(parentId: UUID): [Category!]!
+  categoryTree(maxDepth: Int = 3): [Category!]!
+  
+  # Cart Queries
+  cart(id: UUID!): Cart
+  activeCart: Cart
+  
+  # Analytics Queries
+  analytics(input: AnalyticsInput!): AnalyticsResult!
+  dashboardMetrics(period: TimePeriod!): DashboardMetrics!
+  
+  # System Queries
+  systemHealth: SystemHealth!
+  currentUser: User
+}
+
+# Root Mutation Type
+type Mutation {
+  # Customer Mutations
+  createCustomer(input: CreateCustomerInput!): CreateCustomerPayload!
+  updateCustomer(id: UUID!, input: UpdateCustomerInput!): UpdateCustomerPayload!
+  deleteCustomer(id: UUID!): DeleteCustomerPayload!
+  verifyCustomer(id: UUID!, input: VerifyCustomerInput!): VerifyCustomerPayload!
+  
+  # Authentication Mutations
+  login(input: LoginInput!): AuthPayload!
+  logout: LogoutPayload!
+  refreshToken(token: String!): AuthPayload!
+  requestPasswordReset(email: Email!): RequestPasswordResetPayload!
+  resetPassword(input: ResetPasswordInput!): ResetPasswordPayload!
+  
+  # Order Mutations
+  createOrder(input: CreateOrderInput!): CreateOrderPayload!
+  updateOrderStatus(id: UUID!, status: OrderStatus!, reason: String): UpdateOrderStatusPayload!
+  cancelOrder(id: UUID!, reason: CancelReason!): CancelOrderPayload!
+  
+  # Cart Mutations
+  createCart(input: CreateCartInput): CreateCartPayload!
+  addToCart(cartId: UUID!, input: AddToCartInput!): AddToCartPayload!
+  updateCartItem(cartId: UUID!, itemId: UUID!, quantity: Int!): UpdateCartItemPayload!
+  removeFromCart(cartId: UUID!, itemId: UUID!): RemoveFromCartPayload!
+  clearCart(cartId: UUID!): ClearCartPayload!
+  
+  # Checkout Mutations
+  initiateCheckout(cartId: UUID!): InitiateCheckoutPayload!
+  completeCheckout(sessionId: UUID!, input: CompleteCheckoutInput!): CompleteCheckoutPayload!
+  
+  # Product Mutations
+  createProduct(input: CreateProductInput!): CreateProductPayload!
+  updateProduct(id: UUID!, input: UpdateProductInput!): UpdateProductPayload!
+  deleteProduct(id: UUID!): DeleteProductPayload!
+  
+  # Review Mutations
+  createReview(input: CreateReviewInput!): CreateReviewPayload!
+  updateReview(id: UUID!, input: UpdateReviewInput!): UpdateReviewPayload!
+  deleteReview(id: UUID!): DeleteReviewPayload!
+  
+  # Inventory Mutations
+  updateInventory(input: UpdateInventoryInput!): UpdateInventoryPayload!
+  reserveInventory(input: ReserveInventoryInput!): ReserveInventoryPayload!
+  releaseReservation(reservationId: UUID!): ReleaseReservationPayload!
+  
+  # Return Mutations
+  createReturn(input: CreateReturnInput!): CreateReturnPayload!
+  updateReturnStatus(id: UUID!, status: ReturnStatus!): UpdateReturnStatusPayload!
+}
+
+# Root Subscription Type
+type Subscription {
+  # Order Subscriptions
+  orderStatusChanged(customerId: UUID): OrderStatusUpdate!
+  orderCreated(customerId: UUID): Order!
+  
+  # Inventory Subscriptions
+  inventoryLevelChanged(productIds: [UUID!]): InventoryUpdate!
+  productBackInStock(productIds: [UUID!]): Product!
+  
+  # Price Subscriptions
+  priceChanged(productIds: [UUID!]): PriceUpdate!
+  
+  # System Subscriptions
+  systemNotification(severity: NotificationSeverity): SystemNotification!
+  
+  # Real-time Analytics
+  metricsUpdate(metrics: [MetricType!]): MetricsUpdate!
+}
+
+# Customer Types
+type Customer {
+  id: UUID!
+  email: Email!
+  firstName: String!
+  lastName: String!
+  fullName: String!
+  phoneNumber: String
+  dateOfBirth: Date
+  status: CustomerStatus!
+  tier: CustomerTier!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  verifiedAt: DateTime
+  
+  # Relationships
+  addresses: [Address!]!
+  defaultShippingAddress: Address
+  defaultBillingAddress: Address
+  orders(first: Int, after: String, filter: OrderFilter): OrderConnection!
+  preferences: CustomerPreferences!
+  segments: [CustomerSegment!]!
+  statistics: CustomerStatistics!
+  activityLog(first: Int, after: String): ActivityConnection!
+}
+
+type CustomerPreferences {
+  id: UUID!
+  communication: CommunicationPreferences!
+  display: DisplayPreferences!
+  privacy: PrivacyPreferences!
+}
+
+type CommunicationPreferences {
+  email: EmailPreferences!
+  sms: SMSPreferences!
+  push: PushPreferences!
+}
+
+type EmailPreferences {
+  marketing: Boolean!
+  transactional: Boolean!
+  newsletter: Boolean!
+}
+
+type DisplayPreferences {
+  language: String!
+  currency: Currency!
+  timezone: String!
+  dateFormat: DateFormat!
+}
+
+type CustomerStatistics {
+  totalOrders: Int!
+  totalSpent: Decimal!
+  averageOrderValue: Decimal!
+  lastOrderDate: DateTime
+  lifetimeValue: Decimal!
+  returnRate: Float!
+}
+
+# Order Types
+type Order {
+  id: UUID!
+  orderNumber: String!
+  customer: Customer!
+  status: OrderStatus!
+  subTotal: Decimal!
+  taxAmount: Decimal!
+  shippingAmount: Decimal!
+  discountAmount: Decimal!
+  totalAmount: Decimal!
+  currency: Currency!
+  
+  # Addresses
+  shippingAddress: Address!
+  billingAddress: Address!
+  
+  # Items and Details
+  items: [OrderItem!]!
+  itemCount: Int!
+  
+  # Payment & Fulfillment
+  payments: [Payment!]!
+  shipments: [Shipment!]!
+  fulfillmentStatus: FulfillmentStatus!
+  
+  # Metadata
+  notes: String
+  tags: [String!]!
+  metadata: JSON
+  
+  # Timestamps
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  completedAt: DateTime
+  cancelledAt: DateTime
+  
+  # Timeline
+  timeline: [OrderEvent!]!
+}
+
+type OrderItem {
+  id: UUID!
+  product: Product!
+  variant: ProductVariant
+  quantity: Int!
+  unitPrice: Decimal!
+  totalPrice: Decimal!
+  discountAmount: Decimal!
+  taxAmount: Decimal!
+  status: OrderItemStatus!
+  
+  # Fulfillment
+  fulfilled: Int!
+  returned: Int!
+  refunded: Int!
+}
+
+# Product Types
+type Product {
+  id: UUID!
+  sku: String!
+  name: String!
+  slug: String!
+  description: String!
+  shortDescription: String
+  brand: Brand
+  status: ProductStatus!
+  
+  # Pricing
+  price: Decimal!
+  compareAtPrice: Decimal
+  currency: Currency!
+  
+  # Organization
+  categories: [Category!]!
+  tags: [String!]!
+  
+  # Media
+  images: [ProductImage!]!
+  defaultImage: ProductImage
+  videos: [ProductVideo!]!
+  
+  # Variants & Options
+  hasVariants: Boolean!
+  variants: [ProductVariant!]!
+  options: [ProductOption!]!
+  
+  # Inventory
+  inventory: InventoryLevel!
+  trackInventory: Boolean!
+  
+  # Reviews & Ratings
+  reviews(first: Int, after: String): ReviewConnection!
+  reviewSummary: ReviewSummary!
+  
+  # SEO
+  seo: SEOMetadata!
+  
+  # Timestamps
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  publishedAt: DateTime
+}
+
+type ProductVariant {
+  id: UUID!
+  sku: String!
+  name: String!
+  price: Decimal!
+  compareAtPrice: Decimal
+  options: [SelectedOption!]!
+  images: [ProductImage!]!
+  inventory: InventoryLevel!
+  weight: Weight
+  dimensions: Dimensions
+  available: Boolean!
+}
+
+type SelectedOption {
+  option: ProductOption!
+  value: String!
+}
+
+type ProductOption {
+  id: UUID!
+  name: String!
+  position: Int!
+  values: [String!]!
+}
+
+# Cart Types
+type Cart {
+  id: UUID!
+  sessionId: String!
+  customer: Customer
+  items: [CartItem!]!
+  itemCount: Int!
+  
+  # Pricing
+  subTotal: Decimal!
+  estimatedTax: Decimal!
+  estimatedShipping: Decimal!
+  discountAmount: Decimal!
+  estimatedTotal: Decimal!
+  currency: Currency!
+  
+  # Applied Codes
+  couponCode: String
+  giftCards: [GiftCard!]!
+  
+  # Metadata
+  notes: String
+  metadata: JSON
+  
+  # Timestamps
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  expiresAt: DateTime!
+  abandonedAt: DateTime
+}
+
+type CartItem {
+  id: UUID!
+  product: Product!
+  variant: ProductVariant
+  quantity: Int!
+  unitPrice: Decimal!
+  totalPrice: Decimal!
+  discountAmount: Decimal!
+  
+  # Availability
+  availability: ItemAvailability!
+  
+  # Metadata
+  customization: JSON
+  giftMessage: String
+}
+
+type ItemAvailability {
+  inStock: Boolean!
+  quantity: Int!
+  leadTime: Int
+  preorderable: Boolean!
+  backorderable: Boolean!
+}
+
+# Common Types
+type Address {
+  id: UUID!
+  type: AddressType!
+  isDefault: Boolean!
+  line1: String!
+  line2: String
+  city: String!
+  state: String!
+  postalCode: String!
+  country: String!
+  
+  # Validation
+  isValidated: Boolean!
+  validatedAt: DateTime
+  
+  # Geocoding
+  latitude: Float
+  longitude: Float
+}
+
+type Payment {
+  id: UUID!
+  method: PaymentMethod!
+  status: PaymentStatus!
+  amount: Decimal!
+  currency: Currency!
+  
+  # Transaction Details
+  transactionId: String!
+  gateway: String!
+  
+  # Card Details (if applicable)
+  last4: String
+  cardBrand: String
+  
+  # Timestamps
+  processedAt: DateTime!
+  failedAt: DateTime
+  refundedAt: DateTime
+}
+
+type Shipment {
+  id: UUID!
+  fulfillment: Fulfillment!
+  status: ShipmentStatus!
+  trackingNumber: String!
+  trackingUrl: URL
+  carrier: String!
+  service: String!
+  
+  # Dates
+  shippedAt: DateTime
+  estimatedDelivery: Date
+  actualDelivery: DateTime
+  
+  # Events
+  events: [ShipmentEvent!]!
+}
+
+# Review Types
+type Review {
+  id: UUID!
+  product: Product!
+  customer: Customer!
+  rating: Int!
+  title: String
+  comment: String
+  isVerifiedPurchase: Boolean!
+  helpfulCount: Int!
+  unhelpfulCount: Int!
+  images: [ReviewImage!]!
+  
+  # Response
+  merchantResponse: MerchantResponse
+  
+  # Timestamps
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ReviewSummary {
+  averageRating: Float!
+  totalReviews: Int!
+  ratingDistribution: RatingDistribution!
+  recommendationRate: Float!
+}
+
+type RatingDistribution {
+  oneStar: Int!
+  twoStar: Int!
+  threeStar: Int!
+  fourStar: Int!
+  fiveStar: Int!
+}
+
+# Analytics Types
+type DashboardMetrics {
+  revenue: RevenueMetrics!
+  orders: OrderMetrics!
+  customers: CustomerMetrics!
+  products: ProductMetrics!
+  period: TimePeriod!
+  comparisonPeriod: TimePeriod
+}
+
+type RevenueMetrics {
+  total: Decimal!
+  growth: Float!
+  byChannel: [ChannelRevenue!]!
+  byCategory: [CategoryRevenue!]!
+  forecast: Decimal
+}
+
+type OrderMetrics {
+  count: Int!
+  averageValue: Decimal!
+  conversionRate: Float!
+  fulfillmentRate: Float!
+  returnRate: Float!
+}
+
+# Input Types
+input CustomerFilter {
+  status: [CustomerStatus!]
+  tier: [CustomerTier!]
+  createdAfter: DateTime
+  createdBefore: DateTime
+  search: String
+}
+
+input OrderFilter {
+  status: [OrderStatus!]
+  customerId: UUID
+  dateFrom: DateTime
+  dateTo: DateTime
+  minAmount: Decimal
+  maxAmount: Decimal
+}
+
+input ProductFilter {
+  status: [ProductStatus!]
+  categories: [UUID!]
+  brands: [String!]
+  minPrice: Decimal
+  maxPrice: Decimal
+  inStock: Boolean
+}
+
+input ProductSearchInput {
+  query: String!
+  filters: ProductFilter
+  facets: [SearchFacet!]
+  sort: ProductSort
+  page: Int
+  perPage: Int
+}
+
+input CreateCustomerInput {
+  email: Email!
+  firstName: String!
+  lastName: String!
+  phoneNumber: String
+  dateOfBirth: Date
+  password: String!
+  marketingConsent: Boolean
+  addresses: [CreateAddressInput!]
+}
+
+input CreateOrderInput {
+  customerId: UUID!
+  items: [CreateOrderItemInput!]!
+  shippingAddress: CreateAddressInput!
+  billingAddress: CreateAddressInput!
+  shippingMethodId: UUID!
+  paymentMethodId: UUID!
+  couponCode: String
+  notes: String
+}
+
+input CreateProductInput {
+  sku: String!
+  name: String!
+  description: String!
+  price: Decimal!
+  categoryIds: [UUID!]!
+  images: [CreateProductImageInput!]
+  variants: [CreateVariantInput!]
+  seo: SEOInput
+}
+
+# Enum Types
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum CustomerTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  VIP
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  DISCONTINUED
+  OUT_OF_STOCK
+}
+
+enum AddressType {
+  BILLING
+  SHIPPING
+  BOTH
+}
+
+enum DateFormat {
+  MM_DD_YYYY
+  DD_MM_YYYY
+  YYYY_MM_DD
+}
+
+enum TimePeriod {
+  TODAY
+  YESTERDAY
+  LAST_7_DAYS
+  LAST_30_DAYS
+  LAST_90_DAYS
+  LAST_YEAR
+  CUSTOM
+}
+
+# Connection Types (Relay-style pagination)
+type CustomerConnection {
+  edges: [CustomerEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CustomerEdge {
+  node: Customer!
+  cursor: String!
+}
+
+type OrderConnection {
+  edges: [OrderEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type OrderEdge {
+  node: Order!
+  cursor: String!
+}
+
+type ProductConnection {
+  edges: [ProductEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProductEdge {
+  node: Product!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# Payload Types
+type CreateCustomerPayload {
+  customer: Customer
+  errors: [UserError!]!
+}
+
+type AuthPayload {
+  token: String
+  refreshToken: String
+  user: User
+  errors: [UserError!]!
+}
+
+type UserError {
+  field: String
+  message: String!
+  code: ErrorCode!
+}
+
+enum ErrorCode {
+  INVALID_INPUT
+  NOT_FOUND
+  UNAUTHORIZED
+  FORBIDDEN
+  CONFLICT
+  INTERNAL_ERROR
+  VALIDATION_ERROR
+}
+
+# Subscription Event Types
+type OrderStatusUpdate {
+  order: Order!
+  previousStatus: OrderStatus!
+  currentStatus: OrderStatus!
+  timestamp: DateTime!
+}
+
+type InventoryUpdate {
+  product: Product!
+  variant: ProductVariant
+  previousLevel: Int!
+  currentLevel: Int!
+  location: String!
+  timestamp: DateTime!
+}
+
+type PriceUpdate {
+  product: Product!
+  variant: ProductVariant
+  previousPrice: Decimal!
+  currentPrice: Decimal!
+  timestamp: DateTime!
+}
+
+type SystemNotification {
+  id: UUID!
+  severity: NotificationSeverity!
+  title: String!
+  message: String!
+  timestamp: DateTime!
+  metadata: JSON
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}

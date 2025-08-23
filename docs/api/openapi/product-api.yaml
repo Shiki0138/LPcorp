@@ -1,0 +1,1448 @@
+openapi: 3.0.3
+info:
+  title: Product Catalog API
+  description: |
+    Enterprise Product Catalog API providing comprehensive product management,
+    including inventory, pricing, variants, and search capabilities.
+  version: 1.0.0
+  contact:
+    name: API Support Team
+    email: api-support@enterprise.com
+  license:
+    name: Enterprise License
+    url: https://enterprise.com/api-license
+
+servers:
+  - url: https://api.enterprise.com/v1
+    description: Production server
+  - url: https://api-staging.enterprise.com/v1
+    description: Staging server
+  - url: https://api-dev.enterprise.com/v1
+    description: Development server
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+
+tags:
+  - name: Products
+    description: Product catalog operations
+  - name: Categories
+    description: Product category management
+  - name: Inventory
+    description: Inventory management operations
+  - name: Pricing
+    description: Product pricing operations
+  - name: Search
+    description: Product search operations
+  - name: Reviews
+    description: Product review management
+
+paths:
+  /products:
+    get:
+      tags:
+        - Products
+      summary: List products
+      description: Retrieve a paginated list of products with filtering options
+      operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: status
+          in: query
+          description: Filter by product status
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ProductStatus'
+        - name: category
+          in: query
+          description: Filter by category ID
+          schema:
+            type: string
+            format: uuid
+        - name: brand
+          in: query
+          description: Filter by brand
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          description: Minimum price filter
+          schema:
+            type: number
+            format: decimal
+        - name: maxPrice
+          in: query
+          description: Maximum price filter
+          schema:
+            type: number
+            format: decimal
+        - name: inStock
+          in: query
+          description: Filter only in-stock products
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Product list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+                  facets:
+                    $ref: '#/components/schemas/SearchFacets'
+
+    post:
+      tags:
+        - Products
+      summary: Create product
+      description: Create a new product
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          headers:
+            Location:
+              description: URL of the created product
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /products/{productId}:
+    get:
+      tags:
+        - Products
+      summary: Get product
+      description: Retrieve detailed information about a specific product
+      operationId: getProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: include
+          in: query
+          description: Include related resources
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [variants, images, reviews, inventory, pricing]
+      responses:
+        '200':
+          description: Product retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Products
+      summary: Update product
+      description: Update all product information
+      operationId: updateProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    patch:
+      tags:
+        - Products
+      summary: Partially update product
+      description: Update specific product fields
+      operationId: patchProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product
+      description: Soft delete a product
+      operationId: deleteProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Product deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /products/{productId}/variants:
+    get:
+      tags:
+        - Products
+      summary: List product variants
+      description: Get all variants for a product
+      operationId: listProductVariants
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Variant list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductVariant'
+
+    post:
+      tags:
+        - Products
+      summary: Create variant
+      description: Add a new variant to a product
+      operationId: createProductVariant
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVariantRequest'
+      responses:
+        '201':
+          description: Variant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+
+  /products/{productId}/images:
+    get:
+      tags:
+        - Products
+      summary: List product images
+      description: Get all images for a product
+      operationId: listProductImages
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Image list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductImage'
+
+    post:
+      tags:
+        - Products
+      summary: Upload image
+      description: Upload a new product image
+      operationId: uploadProductImage
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                alt:
+                  type: string
+                position:
+                  type: integer
+                isDefault:
+                  type: boolean
+      responses:
+        '201':
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductImage'
+
+  /categories:
+    get:
+      tags:
+        - Categories
+      summary: List categories
+      description: Get category hierarchy
+      operationId: listCategories
+      parameters:
+        - name: parentId
+          in: query
+          description: Filter by parent category
+          schema:
+            type: string
+            format: uuid
+        - name: depth
+          in: query
+          description: Tree depth to retrieve
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 3
+      responses:
+        '200':
+          description: Categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+    post:
+      tags:
+        - Categories
+      summary: Create category
+      description: Create a new product category
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+
+  /inventory:
+    get:
+      tags:
+        - Inventory
+      summary: Get inventory levels
+      description: Retrieve inventory levels for products
+      operationId: getInventoryLevels
+      parameters:
+        - name: productIds
+          in: query
+          description: Product IDs to check
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: locationId
+          in: query
+          description: Warehouse location ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Inventory levels retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InventoryLevel'
+
+    post:
+      tags:
+        - Inventory
+      summary: Update inventory
+      description: Update inventory levels
+      operationId: updateInventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryRequest'
+      responses:
+        '200':
+          description: Inventory updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InventoryLevel'
+
+  /inventory/reserve:
+    post:
+      tags:
+        - Inventory
+      summary: Reserve inventory
+      description: Reserve inventory for an order
+      operationId: reserveInventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReserveInventoryRequest'
+      responses:
+        '200':
+          description: Inventory reserved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reservationId:
+                    type: string
+                    format: uuid
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        productId:
+                          type: string
+                          format: uuid
+                        variantId:
+                          type: string
+                          format: uuid
+                        quantity:
+                          type: integer
+                        reserved:
+                          type: boolean
+
+  /pricing/calculate:
+    post:
+      tags:
+        - Pricing
+      summary: Calculate pricing
+      description: Calculate dynamic pricing for products
+      operationId: calculatePricing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculatePricingRequest'
+      responses:
+        '200':
+          description: Pricing calculated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PricingResult'
+
+  /products/search:
+    post:
+      tags:
+        - Search
+      summary: Search products
+      description: Advanced product search with faceting
+      operationId: searchProducts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /products/{productId}/reviews:
+    get:
+      tags:
+        - Reviews
+      summary: List product reviews
+      description: Get reviews for a product
+      operationId: listProductReviews
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [newest, oldest, highest_rating, lowest_rating, most_helpful]
+        - name: rating
+          in: query
+          description: Filter by rating
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+      responses:
+        '200':
+          description: Reviews retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  summary:
+                    $ref: '#/components/schemas/ReviewSummary'
+
+    post:
+      tags:
+        - Reviews
+      summary: Create review
+      description: Submit a product review
+      operationId: createProductReview
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Review created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      description: Product unique identifier
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PerPageParam:
+      name: perPage
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    SortParam:
+      name: sort
+      in: query
+      description: Sort order
+      schema:
+        type: string
+        enum: [name, -name, price, -price, createdAt, -createdAt, popularity, -popularity]
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        shortDescription:
+          type: string
+        brand:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+        price:
+          type: number
+          format: decimal
+        compareAtPrice:
+          type: number
+          format: decimal
+          nullable: true
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                format: uri
+              alt:
+                type: string
+        categories:
+          type: array
+          items:
+            type: string
+            format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            variants:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProductVariant'
+            attributes:
+              type: object
+              additionalProperties:
+                type: string
+            dimensions:
+              $ref: '#/components/schemas/ProductDimensions'
+            seo:
+              $ref: '#/components/schemas/SEOMetadata'
+            inventory:
+              $ref: '#/components/schemas/InventoryLevel'
+            reviews:
+              $ref: '#/components/schemas/ReviewSummary'
+
+    CreateProductRequest:
+      type: object
+      required:
+        - sku
+        - name
+        - price
+      properties:
+        sku:
+          type: string
+          pattern: '^[A-Z0-9-]+$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        slug:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        description:
+          type: string
+        shortDescription:
+          type: string
+          maxLength: 500
+        brand:
+          type: string
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+        compareAtPrice:
+          type: number
+          format: decimal
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        categories:
+          type: array
+          items:
+            type: string
+            format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        dimensions:
+          $ref: '#/components/schemas/ProductDimensions'
+        seo:
+          $ref: '#/components/schemas/SEOMetadata'
+
+    UpdateProductRequest:
+      $ref: '#/components/schemas/CreateProductRequest'
+
+    PatchProductRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: decimal
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+
+    ProductStatus:
+      type: string
+      enum:
+        - draft
+        - active
+        - discontinued
+        - out_of_stock
+
+    ProductVariant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+          format: decimal
+        compareAtPrice:
+          type: number
+          format: decimal
+          nullable: true
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+        inventory:
+          type: object
+          properties:
+            quantity:
+              type: integer
+            reserved:
+              type: integer
+            available:
+              type: integer
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+        weight:
+          type: number
+          format: decimal
+        dimensions:
+          $ref: '#/components/schemas/ProductDimensions'
+
+    CreateVariantRequest:
+      type: object
+      required:
+        - sku
+        - options
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+          format: decimal
+        compareAtPrice:
+          type: number
+          format: decimal
+        options:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - name
+              - value
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+        weight:
+          type: number
+          format: decimal
+        dimensions:
+          $ref: '#/components/schemas/ProductDimensions'
+
+    ProductImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        thumbnailUrl:
+          type: string
+          format: uri
+        alt:
+          type: string
+        position:
+          type: integer
+        isDefault:
+          type: boolean
+        width:
+          type: integer
+        height:
+          type: integer
+
+    ProductDimensions:
+      type: object
+      properties:
+        length:
+          type: number
+          format: decimal
+        width:
+          type: number
+          format: decimal
+        height:
+          type: number
+          format: decimal
+        unit:
+          type: string
+          enum: [cm, in, m, ft]
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+        path:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+        position:
+          type: integer
+        isActive:
+          type: boolean
+        productCount:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    CreateCategoryRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        isActive:
+          type: boolean
+          default: true
+
+    InventoryLevel:
+      type: object
+      properties:
+        productId:
+          type: string
+          format: uuid
+        variantId:
+          type: string
+          format: uuid
+        locationId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        reserved:
+          type: integer
+        available:
+          type: integer
+        incoming:
+          type: integer
+        reorderPoint:
+          type: integer
+        reorderQuantity:
+          type: integer
+
+    UpdateInventoryRequest:
+      type: object
+      required:
+        - updates
+      properties:
+        updates:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - productId
+              - quantity
+              - operation
+            properties:
+              productId:
+                type: string
+                format: uuid
+              variantId:
+                type: string
+                format: uuid
+              locationId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+              operation:
+                type: string
+                enum: [set, increment, decrement]
+
+    ReserveInventoryRequest:
+      type: object
+      required:
+        - items
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - productId
+              - quantity
+            properties:
+              productId:
+                type: string
+                format: uuid
+              variantId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+                minimum: 1
+        duration:
+          type: integer
+          description: Reservation duration in minutes
+          default: 15
+
+    CalculatePricingRequest:
+      type: object
+      required:
+        - items
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - productId
+              - quantity
+            properties:
+              productId:
+                type: string
+                format: uuid
+              variantId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+                minimum: 1
+        couponCode:
+          type: string
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+
+    PricingResult:
+      type: object
+      properties:
+        productId:
+          type: string
+          format: uuid
+        variantId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        basePrice:
+          type: number
+          format: decimal
+        discountAmount:
+          type: number
+          format: decimal
+        finalPrice:
+          type: number
+          format: decimal
+        appliedRules:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId:
+                type: string
+              ruleName:
+                type: string
+              discountAmount:
+                type: number
+                format: decimal
+
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        filters:
+          type: object
+          properties:
+            categories:
+              type: array
+              items:
+                type: string
+                format: uuid
+            brands:
+              type: array
+              items:
+                type: string
+            priceRange:
+              type: object
+              properties:
+                min:
+                  type: number
+                  format: decimal
+                max:
+                  type: number
+                  format: decimal
+            attributes:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            inStock:
+              type: boolean
+        sort:
+          type: string
+          enum: [relevance, price_asc, price_desc, name_asc, name_desc, newest, popular]
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        perPage:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        facets:
+          type: array
+          items:
+            type: string
+            enum: [categories, brands, price, attributes, rating]
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        facets:
+          $ref: '#/components/schemas/SearchFacets'
+        suggestions:
+          type: array
+          items:
+            type: string
+        totalResults:
+          type: integer
+
+    SearchFacets:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              count:
+                type: integer
+        brands:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+        priceRanges:
+          type: array
+          items:
+            type: object
+            properties:
+              min:
+                type: number
+                format: decimal
+              max:
+                type: number
+                format: decimal
+              count:
+                type: integer
+        attributes:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                value:
+                  type: string
+                count:
+                  type: integer
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        customerName:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        title:
+          type: string
+        comment:
+          type: string
+        isVerifiedPurchase:
+          type: boolean
+        helpfulCount:
+          type: integer
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateReviewRequest:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        title:
+          type: string
+          maxLength: 100
+        comment:
+          type: string
+          maxLength: 5000
+        images:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uri
+
+    ReviewSummary:
+      type: object
+      properties:
+        averageRating:
+          type: number
+          format: decimal
+        totalReviews:
+          type: integer
+        ratingDistribution:
+          type: object
+          properties:
+            '1':
+              type: integer
+            '2':
+              type: integer
+            '3':
+              type: integer
+            '4':
+              type: integer
+            '5':
+              type: integer
+
+    SEOMetadata:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+        canonical:
+          type: string
+          format: uri
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        perPage:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    PaginationLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          format: uri
+        last:
+          type: string
+          format: uri
+        next:
+          type: string
+          format: uri
+          nullable: true
+        prev:
+          type: string
+          format: uri
+          nullable: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            path:
+              type: string
+            requestId:
+              type: string
+              format: uuid
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

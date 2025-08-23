@@ -1,0 +1,303 @@
+# Default values for enterprise-system
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  environment: production
+  domain: enterprise.com
+  imageRegistry: ghcr.io/enterprise
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  storageClass: gp3-encrypted
+  
+# Microservices configuration
+services:
+  userService:
+    enabled: true
+    replicaCount: 3
+    image:
+      repository: user-service
+      tag: latest
+      pullPolicy: Always
+    service:
+      type: ClusterIP
+      port: 8001
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+    
+  orderService:
+    enabled: true
+    replicaCount: 5
+    image:
+      repository: order-service
+      tag: latest
+      pullPolicy: Always
+    service:
+      type: ClusterIP
+      port: 8002
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 5
+      maxReplicas: 50
+      targetCPUUtilizationPercentage: 65
+      targetMemoryUtilizationPercentage: 75
+    
+  productService:
+    enabled: true
+    replicaCount: 3
+    image:
+      repository: product-service
+      tag: latest
+      pullPolicy: Always
+    service:
+      type: ClusterIP
+      port: 8003
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 30
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+    
+  paymentService:
+    enabled: true
+    replicaCount: 3
+    image:
+      repository: payment-service
+      tag: latest
+      pullPolicy: Always
+    service:
+      type: ClusterIP
+      port: 8004
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 15
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 70
+    pciCompliance: true
+    
+# Infrastructure components
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "changeme"
+    database: enterprise_db
+  primary:
+    persistence:
+      enabled: true
+      size: 100Gi
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 100Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+        
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "changeme"
+  master:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  sentinel:
+    enabled: true
+    replicaCount: 3
+    
+kafka:
+  enabled: true
+  replicaCount: 3
+  auth:
+    enabled: true
+    clientProtocol: tls
+    interBrokerProtocol: tls
+  persistence:
+    enabled: true
+    size: 100Gi
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+  zookeeper:
+    enabled: true
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 20Gi
+      
+kong:
+  enabled: true
+  proxy:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+      
+# Monitoring stack
+monitoring:
+  prometheus:
+    enabled: true
+    retention: 30d
+    storageSize: 100Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 8Gi
+  grafana:
+    enabled: true
+    adminPassword: "changeme"
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+        
+# Ingress configuration
+ingress:
+  enabled: true
+  className: kong
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api.enterprise.com
+      paths:
+        - path: /api/v1/users
+          pathType: Prefix
+          service: user-service
+        - path: /api/v1/orders
+          pathType: Prefix
+          service: order-service
+        - path: /api/v1/products
+          pathType: Prefix
+          service: product-service
+        - path: /api/v1/payments
+          pathType: Prefix
+          service: payment-service
+  tls:
+    - secretName: api-tls
+      hosts:
+        - api.enterprise.com
+        
+# Network policies
+networkPolicies:
+  enabled: true
+  defaultDenyIngress: true
+  defaultDenyEgress: true
+  
+# Pod Security Policies
+podSecurityPolicies:
+  enabled: true
+  
+# Resource quotas
+resourceQuotas:
+  enabled: true
+  requests:
+    cpu: "2000"
+    memory: "4000Gi"
+  limits:
+    cpu: "4000"
+    memory: "8000Gi"
+    
+# Node selectors and tolerations
+nodeSelector:
+  workload: application
+  
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - enterprise-system
+          topologyKey: kubernetes.io/hostname

@@ -1,0 +1,302 @@
+# Kafka Cluster using Strimzi Operator
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: enterprise-kafka
+  namespace: production
+spec:
+  kafka:
+    version: 3.5.1
+    replicas: 3
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls
+      - name: external
+        port: 9094
+        type: loadbalancer
+        tls: true
+        authentication:
+          type: tls
+    config:
+      # Performance tuning
+      num.network.threads: 8
+      num.io.threads: 8
+      socket.send.buffer.bytes: 102400
+      socket.receive.buffer.bytes: 102400
+      socket.request.max.bytes: 104857600
+      
+      # Log configuration
+      log.retention.hours: 168  # 7 days
+      log.segment.bytes: 1073741824  # 1GB
+      log.retention.check.interval.ms: 300000
+      
+      # Replication
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      
+      # Compression
+      compression.type: snappy
+      
+      # Transaction support
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      
+      # Auto topic creation
+      auto.create.topics.enable: false
+      
+      # Message size
+      message.max.bytes: 10485760  # 10MB
+      replica.fetch.max.bytes: 10485760
+      
+    storage:
+      type: persistent-claim
+      size: 100Gi
+      class: gp3-encrypted
+      deleteClaim: false
+    rack:
+      topologyKey: topology.kubernetes.io/zone
+    resources:
+      requests:
+        memory: 4Gi
+        cpu: "1000m"
+      limits:
+        memory: 8Gi
+        cpu: "4000m"
+    jvmOptions:
+      "-Xms": "4096m"
+      "-Xmx": "4096m"
+      "-XX": 
+        UseG1GC: true
+        MaxGCPauseMillis: 20
+        InitiatingHeapOccupancyPercent: 35
+        ExplicitGCInvokesConcurrent: true
+    readinessProbe:
+      initialDelaySeconds: 15
+      timeoutSeconds: 5
+    livenessProbe:
+      initialDelaySeconds: 45
+      timeoutSeconds: 5
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                    - key: strimzi.io/name
+                      operator: In
+                      values:
+                        - enterprise-kafka-kafka
+                topologyKey: kubernetes.io/hostname
+  zookeeper:
+    replicas: 3
+    storage:
+      type: persistent-claim
+      size: 20Gi
+      class: gp3-encrypted
+      deleteClaim: false
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: "500m"
+      limits:
+        memory: 4Gi
+        cpu: "2000m"
+    jvmOptions:
+      "-Xms": "2048m"
+      "-Xmx": "2048m"
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: zookeeper-metrics-config.yml
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          memory: 512Mi
+          cpu: "200m"
+        limits:
+          memory: 1Gi
+          cpu: "1000m"
+    userOperator:
+      resources:
+        requests:
+          memory: 512Mi
+          cpu: "200m"
+        limits:
+          memory: 1Gi
+          cpu: "1000m"
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: "100m"
+      limits:
+        memory: 512Mi
+        cpu: "500m"
+---
+# Kafka Topics
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: order-events
+  namespace: production
+  labels:
+    strimzi.io/cluster: enterprise-kafka
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    segment.ms: 86400000  # 1 day
+    compression.type: snappy
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: payment-events
+  namespace: production
+  labels:
+    strimzi.io/cluster: enterprise-kafka
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 2592000000  # 30 days for payment events
+    segment.ms: 86400000
+    compression.type: snappy
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: user-events
+  namespace: production
+  labels:
+    strimzi.io/cluster: enterprise-kafka
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    segment.ms: 86400000
+    compression.type: snappy
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: audit-log
+  namespace: production
+  labels:
+    strimzi.io/cluster: enterprise-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 31536000000  # 365 days for audit logs
+    segment.ms: 86400000
+    compression.type: gzip
+    min.insync.replicas: 2
+    cleanup.policy: delete
+---
+# Kafka Connect
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: enterprise-connect
+  namespace: production
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  version: 3.5.1
+  replicas: 2
+  bootstrapServers: enterprise-kafka-kafka-bootstrap:9093
+  tls:
+    trustedCertificates:
+      - secretName: enterprise-kafka-cluster-ca-cert
+        certificate: ca.crt
+  config:
+    group.id: connect-cluster
+    offset.storage.topic: connect-offsets
+    config.storage.topic: connect-configs
+    status.storage.topic: connect-status
+    # Replication factors for Connect topics
+    config.storage.replication.factor: 3
+    offset.storage.replication.factor: 3
+    status.storage.replication.factor: 3
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: "500m"
+    limits:
+      memory: 4Gi
+      cpu: "2000m"
+  jvmOptions:
+    "-Xms": "2048m"
+    "-Xmx": "2048m"
+  build:
+    output:
+      type: docker
+      image: ghcr.io/enterprise/kafka-connect:latest
+    plugins:
+      - name: debezium-postgres
+        artifacts:
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.3.0.Final/debezium-connector-postgres-2.3.0.Final-plugin.tar.gz
+      - name: kafka-connect-jdbc
+        artifacts:
+          - type: tgz
+            url: https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.7.0/kafka-connect-jdbc-10.7.0.tar.gz
+---
+# Metrics ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics
+  namespace: production
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    whitelistObjectNames:
+      - kafka.server:type=ReplicaManager,name=*
+      - kafka.server:type=BrokerTopicMetrics,name=*
+      - kafka.server:type=KafkaRequestHandlerPool,name=*
+      - kafka.controller:type=*,name=*
+      - kafka.network:type=RequestMetrics,name=*,request=*
+      - kafka.log:type=LogFlushStats,name=*
+    rules:
+      - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
+        name: kafka_server_$1_$2
+        type: GAUGE
+        labels:
+          clientId: "$3"
+          topic: "$4"
+          partition: "$5"
+  zookeeper-metrics-config.yml: |
+    lowercaseOutputName: true
+    rules:
+      - pattern: "org.apache.ZooKeeperService<name0=ReplicatedServer_id(\\d+)><>(\\w+)"
+        name: "zookeeper_$2"
+        type: GAUGE

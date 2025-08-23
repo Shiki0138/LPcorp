@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: production
+  labels:
+    app: user-service
+    version: v1
+    component: backend
+    tier: api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        version: v1
+        component: backend
+        tier: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: user-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      nodeSelector:
+        workload: application
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - user-service
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: user-service
+        image: ghcr.io/enterprise/user-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8001
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: SERVICE_NAME
+          value: "user-service"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: database.host
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: database.port
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: database.name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: database.username
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: database.password
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: redis.host
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: redis.port
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: jwt.secret
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: app-config
+          mountPath: /etc/config
+          readOnly: true
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: app-config
+        configMap:
+          name: user-service-config
+      - name: tls-certs
+        secret:
+          secretName: user-service-tls
+      imagePullSecrets:
+      - name: ghcr-pull-secret

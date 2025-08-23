@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: production
+  labels:
+    app: user-service
+    component: backend
+    tier: api
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "https"
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+  - name: http
+    port: 8001
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: user-service
+  namespace: production
+  labels:
+    app: user-service
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/user-service-role
+---
+# Headless service for direct pod access
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service-headless
+  namespace: production
+  labels:
+    app: user-service
+    component: backend
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: user-service
+  ports:
+  - name: http
+    port: 8001
+    targetPort: http
+    protocol: TCP

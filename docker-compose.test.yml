@@ -1,0 +1,230 @@
+version: '3.9'
+
+services:
+  # Test Infrastructure
+  test-postgres:
+    image: postgres:15-alpine
+    container_name: test-postgres
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test_db
+    ports:
+      - "5433:5432"
+    command: postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  test-mongodb:
+    image: mongo:6.0
+    container_name: test-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: test
+      MONGO_INITDB_ROOT_PASSWORD: test
+      MONGO_INITDB_DATABASE: test_db
+    ports:
+      - "27018:27017"
+    command: mongod --nojournal --noprealloc --smallfiles
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  test-redis:
+    image: redis:7-alpine
+    container_name: test-redis
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  test-kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: test-kafka
+    depends_on:
+      - test-zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: test-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://test-kafka:9092,PLAINTEXT_HOST://localhost:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_MS: 300000  # 5 minutes retention for tests
+    ports:
+      - "29093:29093"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  test-zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: test-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2182:2181"
+    networks:
+      - test-network
+
+  test-rabbitmq:
+    image: rabbitmq:3.12-alpine
+    container_name: test-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: test
+      RABBITMQ_DEFAULT_PASS: test
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  # Integration Test Runner
+  integration-test-runner:
+    build:
+      context: ./tests/integration
+      dockerfile: Dockerfile
+    container_name: integration-test-runner
+    environment:
+      POSTGRES_HOST: test-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test_db
+      MONGODB_HOST: test-mongodb
+      MONGODB_PORT: 27017
+      MONGODB_USER: test
+      MONGODB_PASSWORD: test
+      REDIS_HOST: test-redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: test-kafka:9092
+      RABBITMQ_HOST: test-rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: test
+      RABBITMQ_PASSWORD: test
+      TEST_PARALLEL_THREADS: 4
+      TEST_TIMEOUT_SECONDS: 300
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+      test-mongodb:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+      test-kafka:
+        condition: service_healthy
+      test-rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./test-results:/app/test-results
+      - ./coverage:/app/coverage
+    command: >
+      sh -c "
+        echo 'Waiting for all services to be ready...' &&
+        sleep 10 &&
+        echo 'Running integration tests...' &&
+        mvn test -Pintegration-test &&
+        echo 'Generating test reports...' &&
+        mvn surefire-report:report &&
+        mvn jacoco:report &&
+        echo 'Integration tests completed!'
+      "
+    networks:
+      - test-network
+
+  # Contract Test Runner (Pact)
+  contract-test-runner:
+    build:
+      context: ./tests/contract
+      dockerfile: Dockerfile
+    container_name: contract-test-runner
+    environment:
+      PACT_BROKER_URL: ${PACT_BROKER_URL:-http://localhost:9292}
+      PACT_BROKER_USERNAME: ${PACT_BROKER_USERNAME:-pact}
+      PACT_BROKER_PASSWORD: ${PACT_BROKER_PASSWORD:-pact}
+    volumes:
+      - ./pact-results:/app/pact-results
+    command: >
+      sh -c "
+        echo 'Running contract tests...' &&
+        mvn test -Pcontract-test &&
+        echo 'Publishing pacts to broker...' &&
+        mvn pact:publish &&
+        echo 'Contract tests completed!'
+      "
+    networks:
+      - test-network
+
+  # Performance Test Runner (Gatling)
+  performance-test-runner:
+    build:
+      context: ./tests/performance
+      dockerfile: Dockerfile
+    container_name: performance-test-runner
+    environment:
+      TARGET_HOST: api-gateway
+      TARGET_PORT: 8080
+      USERS: ${PERF_TEST_USERS:-100}
+      RAMP_UP_TIME: ${PERF_TEST_RAMP_UP:-60}
+      DURATION: ${PERF_TEST_DURATION:-300}
+    volumes:
+      - ./gatling-results:/app/results
+    command: >
+      sh -c "
+        echo 'Running performance tests...' &&
+        mvn gatling:test &&
+        echo 'Performance tests completed!'
+      "
+    networks:
+      - test-network
+
+  # Security Test Runner (OWASP ZAP)
+  security-test-runner:
+    image: owasp/zap2docker-stable
+    container_name: security-test-runner
+    environment:
+      TARGET_URL: http://api-gateway:8080
+    volumes:
+      - ./security-results:/zap/reports
+    command: >
+      zap-baseline.py 
+      -t http://api-gateway:8080 
+      -r security-report.html 
+      -x security-report.xml
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16

@@ -1,0 +1,310 @@
+# Notification Service Configuration
+server:
+  port: 8080
+  servlet:
+    context-path: /notification-service
+
+spring:
+  application:
+    name: notification-service
+  
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://localhost:5432/hive_notifications
+    username: ${DB_USERNAME:hive_user}
+    password: ${DB_PASSWORD:hive_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+  
+  # Liquibase for database migrations
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    enabled: true
+  
+  # Email Configuration
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
+  
+  # Redis Configuration (for caching and rate limiting)
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+  
+  # Message Queue Configuration (RabbitMQ)
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: /
+    publisher-confirms: true
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          max-attempts: 3
+          max-interval: 10000ms
+  
+  # Jackson Configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# Notification Service Specific Configuration
+notification:
+  # Email Settings
+  email:
+    from-address: ${EMAIL_FROM_ADDRESS:noreply@hive.com}
+    from-name: ${EMAIL_FROM_NAME:Hive Notifications}
+    track-opens: ${EMAIL_TRACK_OPENS:true}
+    track-clicks: ${EMAIL_TRACK_CLICKS:true}
+    max-retries: ${EMAIL_MAX_RETRIES:3}
+  
+  # SMS Settings
+  sms:
+    provider: ${SMS_PROVIDER:twilio}
+    twilio:
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      from-number: ${TWILIO_FROM_NUMBER:}
+    aws:
+      access-key: ${AWS_ACCESS_KEY:}
+      secret-key: ${AWS_SECRET_KEY:}
+      region: ${AWS_REGION:us-east-1}
+  
+  # Push Notification Settings
+  push:
+    firebase:
+      server-key: ${FIREBASE_SERVER_KEY:}
+      url: ${FIREBASE_URL:https://fcm.googleapis.com/fcm/send}
+    apns:
+      key-id: ${APNS_KEY_ID:}
+      team-id: ${APNS_TEAM_ID:}
+      bundle-id: ${APNS_BUNDLE_ID:}
+      key-path: ${APNS_KEY_PATH:}
+  
+  # WhatsApp Business API Settings
+  whatsapp:
+    base-url: ${WHATSAPP_BASE_URL:https://graph.facebook.com}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+  
+  # Slack Integration Settings
+  slack:
+    bot-token: ${SLACK_BOT_TOKEN:}
+    app-token: ${SLACK_APP_TOKEN:}
+    webhook-url: ${SLACK_WEBHOOK_URL:}
+  
+  # Microsoft Teams Settings
+  teams:
+    webhook-url: ${TEAMS_WEBHOOK_URL:}
+    bot-app-id: ${TEAMS_BOT_APP_ID:}
+    bot-password: ${TEAMS_BOT_PASSWORD:}
+  
+  # Queue Processing Settings
+  queue:
+    batch-size: ${QUEUE_BATCH_SIZE:100}
+    max-retries: ${QUEUE_MAX_RETRIES:3}
+    processing-threads: ${QUEUE_PROCESSING_THREADS:10}
+    enable-priority-queue: ${QUEUE_ENABLE_PRIORITY:true}
+    processing-interval: ${QUEUE_PROCESSING_INTERVAL:5000}
+  
+  # Rate Limiting Settings
+  rate-limiting:
+    enabled: ${RATE_LIMITING_ENABLED:true}
+    default-daily-limit: ${RATE_LIMITING_DAILY:1000}
+    default-hourly-limit: ${RATE_LIMITING_HOURLY:100}
+    high-priority-multiplier: ${RATE_LIMITING_HIGH_PRIORITY_MULTIPLIER:2}
+  
+  # Analytics Settings
+  analytics:
+    enabled: ${ANALYTICS_ENABLED:true}
+    retention-days: ${ANALYTICS_RETENTION_DAYS:90}
+    real-time-metrics: ${ANALYTICS_REAL_TIME:true}
+    batch-processing: ${ANALYTICS_BATCH_PROCESSING:true}
+  
+  # Template Settings
+  template:
+    cache-enabled: ${TEMPLATE_CACHE_ENABLED:true}
+    cache-ttl: ${TEMPLATE_CACHE_TTL:3600}
+    approval-required: ${TEMPLATE_APPROVAL_REQUIRED:true}
+    version-control: ${TEMPLATE_VERSION_CONTROL:true}
+  
+  # Security Settings
+  security:
+    webhook-signature-validation: ${SECURITY_WEBHOOK_VALIDATION:true}
+    rate-limiting-by-ip: ${SECURITY_RATE_LIMITING_IP:true}
+    audit-logging: ${SECURITY_AUDIT_LOGGING:true}
+  
+  # Feature Flags
+  features:
+    multi-channel-delivery: ${FEATURE_MULTI_CHANNEL:true}
+    a-b-testing: ${FEATURE_AB_TESTING:true}
+    smart-delivery-optimization: ${FEATURE_SMART_DELIVERY:true}
+    real-time-webhooks: ${FEATURE_REAL_TIME_WEBHOOKS:true}
+    advanced-analytics: ${FEATURE_ADVANCED_ANALYTICS:true}
+
+# Management and Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+  endpoint:
+    health:
+      show-details: when_authorized
+    metrics:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: ${ENVIRONMENT:development}
+
+# Logging Configuration
+logging:
+  level:
+    com.hive.notification: ${LOG_LEVEL:INFO}
+    org.springframework.mail: ${MAIL_LOG_LEVEL:WARN}
+    org.springframework.web: ${WEB_LOG_LEVEL:WARN}
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
+    org.hibernate.type: ${SQL_TYPE_LOG_LEVEL:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE_PATH:logs/notification-service.log}
+
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+  info:
+    title: Hive Notification Service API
+    description: Comprehensive notification service with multi-channel delivery
+    version: 1.0.0
+    contact:
+      name: Hive Team
+      email: support@hive.com
+
+# Async Processing Configuration
+spring.task.execution:
+  pool:
+    core-size: 10
+    max-size: 50
+    queue-capacity: 100
+  thread-name-prefix: notification-async-
+
+spring.task.scheduling:
+  pool:
+    size: 5
+  thread-name-prefix: notification-scheduler-
+
+# Environment-specific overrides
+---
+spring:
+  config:
+    activate:
+      on-profile: development
+logging:
+  level:
+    com.hive.notification: DEBUG
+    org.springframework.mail: DEBUG
+notification:
+  email:
+    track-opens: false
+    track-clicks: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: production
+logging:
+  level:
+    root: WARN
+    com.hive.notification: INFO
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+notification:
+  analytics:
+    retention-days: 365
+  security:
+    webhook-signature-validation: true
+    rate-limiting-by-ip: true
+    audit-logging: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  liquibase:
+    enabled: false
+notification:
+  email:
+    track-opens: false
+    track-clicks: false
+  analytics:
+    enabled: false

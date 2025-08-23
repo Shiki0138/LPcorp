@@ -1,0 +1,162 @@
+<?xml version="1.0"?>
+<ruleset name="Custom PMD Rules"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+    
+    <description>
+        Custom PMD ruleset for Microservices Platform
+    </description>
+    
+    <!-- Best Practices -->
+    <rule ref="category/java/bestpractices.xml">
+        <exclude name="GuardLogStatement"/>
+        <exclude name="JUnitTestContainsTooManyAsserts"/>
+        <exclude name="JUnitAssertionsShouldIncludeMessage"/>
+    </rule>
+    
+    <!-- Code Style -->
+    <rule ref="category/java/codestyle.xml">
+        <exclude name="AtLeastOneConstructor"/>
+        <exclude name="CommentDefaultAccessModifier"/>
+        <exclude name="LocalVariableCouldBeFinal"/>
+        <exclude name="MethodArgumentCouldBeFinal"/>
+        <exclude name="OnlyOneReturn"/>
+        <exclude name="ShortVariable"/>
+        <exclude name="LongVariable"/>
+        <exclude name="ShortClassName"/>
+        <exclude name="TooManyStaticImports"/>
+    </rule>
+    
+    <!-- Design -->
+    <rule ref="category/java/design.xml">
+        <exclude name="LawOfDemeter"/>
+        <exclude name="LoosePackageCoupling"/>
+        <exclude name="TooManyMethods"/>
+        <exclude name="DataClass"/>
+    </rule>
+    
+    <!-- Documentation -->
+    <rule ref="category/java/documentation.xml">
+        <exclude name="CommentRequired"/>
+        <exclude name="CommentSize"/>
+    </rule>
+    
+    <!-- Error Prone -->
+    <rule ref="category/java/errorprone.xml">
+        <exclude name="BeanMembersShouldSerialize"/>
+        <exclude name="DataflowAnomalyAnalysis"/>
+        <exclude name="NullAssignment"/>
+    </rule>
+    
+    <!-- Multithreading -->
+    <rule ref="category/java/multithreading.xml">
+        <exclude name="UseConcurrentHashMap"/>
+        <exclude name="DoNotUseThreads"/>
+    </rule>
+    
+    <!-- Performance -->
+    <rule ref="category/java/performance.xml">
+        <exclude name="AvoidInstantiatingObjectsInLoops"/>
+    </rule>
+    
+    <!-- Security -->
+    <rule ref="category/java/security.xml"/>
+    
+    <!-- Custom Rules -->
+    
+    <!-- Naming Conventions -->
+    <rule ref="category/java/codestyle.xml/ClassNamingConventions">
+        <properties>
+            <property name="classPattern" value="[A-Z][a-zA-Z0-9]*"/>
+            <property name="abstractClassPattern" value="Abstract[A-Z][a-zA-Z0-9]*"/>
+            <property name="interfacePattern" value="[A-Z][a-zA-Z0-9]*"/>
+            <property name="enumPattern" value="[A-Z][a-zA-Z0-9]*"/>
+            <property name="annotationPattern" value="[A-Z][a-zA-Z0-9]*"/>
+            <property name="utilityClassPattern" value="[A-Z][a-zA-Z0-9]*Utils?"/>
+        </properties>
+    </rule>
+    
+    <!-- Method Naming -->
+    <rule ref="category/java/codestyle.xml/MethodNamingConventions">
+        <properties>
+            <property name="methodPattern" value="[a-z][a-zA-Z0-9]*"/>
+            <property name="staticPattern" value="[a-z][a-zA-Z0-9]*"/>
+            <property name="nativePattern" value="[a-z][a-zA-Z0-9]*"/>
+            <property name="junit3TestPattern" value="test[A-Z][a-zA-Z0-9]*"/>
+            <property name="junit4TestPattern" value="[a-z][a-zA-Z0-9]*"/>
+            <property name="junit5TestPattern" value="[a-z][a-zA-Z0-9]*"/>
+        </properties>
+    </rule>
+    
+    <!-- Cyclomatic Complexity -->
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <property name="classReportLevel" value="80"/>
+            <property name="methodReportLevel" value="10"/>
+            <property name="cycloOptions" value="ignoreBooleanPaths"/>
+        </properties>
+    </rule>
+    
+    <!-- Cognitive Complexity -->
+    <rule ref="category/java/design.xml/CognitiveComplexity">
+        <properties>
+            <property name="reportLevel" value="15"/>
+        </properties>
+    </rule>
+    
+    <!-- NPath Complexity -->
+    <rule ref="category/java/design.xml/NPathComplexity">
+        <properties>
+            <property name="reportLevel" value="200"/>
+        </properties>
+    </rule>
+    
+    <!-- Excessive Imports -->
+    <rule ref="category/java/design.xml/ExcessiveImports">
+        <properties>
+            <property name="minimum" value="40"/>
+        </properties>
+    </rule>
+    
+    <!-- Coupling Between Objects -->
+    <rule ref="category/java/design.xml/CouplingBetweenObjects">
+        <properties>
+            <property name="threshold" value="20"/>
+        </properties>
+    </rule>
+    
+    <!-- Logger -->
+    <rule ref="category/java/errorprone.xml/InvalidSlf4jMessageFormat"/>
+    <rule ref="category/java/errorprone.xml/MoreThanOneLogger"/>
+    
+    <!-- Empty Catch Block -->
+    <rule ref="category/java/errorprone.xml/EmptyCatchBlock">
+        <properties>
+            <property name="allowCommentedBlocks" value="true"/>
+            <property name="allowExceptionNameRegex" value="^(ignored|expected)$"/>
+        </properties>
+    </rule>
+    
+    <!-- Unused Code -->
+    <rule ref="category/java/bestpractices.xml/UnusedFormalParameter">
+        <properties>
+            <property name="checkAll" value="true"/>
+        </properties>
+    </rule>
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+    
+    <!-- Exception Handling -->
+    <rule ref="category/java/design.xml/AvoidThrowingRawExceptionTypes"/>
+    <rule ref="category/java/design.xml/AvoidCatchingGenericException"/>
+    <rule ref="category/java/design.xml/SignatureDeclareThrowsException"/>
+    <rule ref="category/java/errorprone.xml/AvoidCatchingNPE"/>
+    
+    <!-- Testing -->
+    <rule ref="category/java/bestpractices.xml/JUnitUseExpected"/>
+    <rule ref="category/java/errorprone.xml/JUnitSpelling"/>
+    <rule ref="category/java/errorprone.xml/JUnitStaticSuite"/>
+    <rule ref="category/java/errorprone.xml/TestClassWithoutTestCases"/>
+</ruleset>

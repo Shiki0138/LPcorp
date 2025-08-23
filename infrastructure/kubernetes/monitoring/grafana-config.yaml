@@ -1,0 +1,412 @@
+# Grafana Configuration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+data:
+  grafana.ini: |
+    [server]
+    root_url = https://grafana.enterprise.com
+    
+    [database]
+    type = postgres
+    host = postgres-primary.production.svc.cluster.local:5432
+    name = grafana
+    user = grafana
+    password = ${GF_DATABASE_PASSWORD}
+    ssl_mode = require
+    
+    [auth]
+    disable_login_form = false
+    
+    [auth.generic_oauth]
+    enabled = true
+    name = Enterprise SSO
+    allow_sign_up = true
+    client_id = ${GF_AUTH_GENERIC_OAUTH_CLIENT_ID}
+    client_secret = ${GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
+    scopes = openid profile email
+    auth_url = https://auth.enterprise.com/oauth/authorize
+    token_url = https://auth.enterprise.com/oauth/token
+    api_url = https://auth.enterprise.com/userinfo
+    
+    [security]
+    admin_user = admin
+    admin_password = ${GF_SECURITY_ADMIN_PASSWORD}
+    secret_key = ${GF_SECURITY_SECRET_KEY}
+    
+    [users]
+    allow_sign_up = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+    
+    [log]
+    mode = console
+    level = info
+    
+    [metrics]
+    enabled = true
+    interval_seconds = 10
+    
+    [alerting]
+    enabled = true
+    execute_alerts = true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki:3100
+      editable: true
+    - name: Tempo
+      type: tempo
+      access: proxy
+      url: http://tempo:3200
+      editable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      options:
+        path: /var/lib/grafana/dashboards
+  
+  system-overview.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": "Prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "tooltip": {
+              "mode": "single"
+            },
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "pluginVersion": "8.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total[5m])) by (service)",
+              "refId": "A"
+            }
+          ],
+          "title": "Request Rate by Service",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "Prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "text": {}
+          },
+          "pluginVersion": "8.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+              "refId": "A"
+            }
+          ],
+          "title": "Error Rate",
+          "type": "gauge"
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 27,
+      "style": "dark",
+      "tags": ["system"],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "System Overview",
+      "uid": "system-overview",
+      "version": 0
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+        runAsNonRoot: true
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.0.3
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+        env:
+        - name: GF_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: database-password
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: admin-password
+        - name: GF_SECURITY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: secret-key
+        - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: oauth-client-id
+        - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: oauth-client-secret
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        volumeMounts:
+        - name: grafana-config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: grafana-dashboards
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: grafana-dashboard-files
+          mountPath: /var/lib/grafana/dashboards
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+      nodeSelector:
+        workload: system
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - grafana
+              topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: grafana-config
+        configMap:
+          name: grafana-config
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+      - name: grafana-dashboards
+        configMap:
+          name: grafana-dashboards
+          items:
+          - key: dashboards.yaml
+            path: dashboards.yaml
+      - name: grafana-dashboard-files
+        configMap:
+          name: grafana-dashboards
+          items:
+          - key: system-overview.json
+            path: system-overview.json
+      - name: grafana-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+    protocol: TCP
