@@ -1,0 +1,627 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins", "typedSql"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management and Authentication
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  emailVerified    DateTime?
+  name             String?
+  image            String?
+  role             UserRole  @default(CLIENT)
+  status           UserStatus @default(ACTIVE)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Authentication
+  accounts         Account[]
+  sessions         Session[]
+  
+  // Client Management
+  clientProfile    ClientProfile?
+  projects         Project[]
+  // landingPages     LandingPage[] @relation("UserLandingPages") // 一時的に無効化
+  
+  // Admin Management
+  createdProjects  Project[] @relation("AdminCreatedProjects")
+  
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+// Client Profile and Form Data
+model ClientProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Basic Information
+  companyName     String?
+  contactPerson   String
+  phone           String
+  address         String?
+  website         String?
+  
+  // Business Information
+  industry        String
+  businessType    BusinessType
+  projectBudget   String
+  timeline        String
+  
+  // Project Requirements
+  projectType     ProjectType[]
+  description     String        @db.Text
+  requirements    String?       @db.Text
+  additionalInfo  String?       @db.Text
+  
+  // Classification
+  priority        Priority      @default(MEDIUM)
+  category        String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@map("client_profiles")
+}
+
+// Project Management System
+model Project {
+  id              String        @id @default(cuid())
+  clientId        String
+  client          User          @relation(fields: [clientId], references: [id])
+  adminId         String?
+  admin           User?         @relation("AdminCreatedProjects", fields: [adminId], references: [id])
+  
+  // Project Details
+  name            String
+  description     String        @db.Text
+  type            ProjectType
+  status          ProjectStatus @default(PENDING)
+  priority        Priority      @default(MEDIUM)
+  
+  // Timeline
+  startDate       DateTime?
+  endDate         DateTime?
+  deadline        DateTime?
+  
+  // Budget
+  budget          Decimal?      @db.Decimal(10, 2)
+  estimatedCost   Decimal?      @db.Decimal(10, 2)
+  actualCost      Decimal?      @db.Decimal(10, 2)
+  
+  // Progress
+  progress        Int           @default(0) // 0-100
+  
+  // File Management
+  files           ProjectFile[]
+  landingPages    LandingPage[]
+  
+  // Metadata
+  metadata        Json?
+  tags            String[]
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@map("projects")
+}
+
+// File Management System
+model ProjectFile {
+  id              String      @id @default(cuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // File Information
+  filename        String
+  originalName    String
+  mimeType        String
+  size            Int         // bytes
+  
+  // File Location
+  path            String      // relative to project folder
+  url             String?     // public URL if needed
+  
+  // File Type and Category
+  fileType        FileType
+  category        String?     // AI-generated category
+  
+  // Image-specific fields
+  width           Int?
+  height          Int?
+  format          String?     // jpeg, png, webp, etc.
+  optimized       Boolean     @default(false)
+  thumbnailPath   String?
+  
+  // Processing Status
+  processed       Boolean     @default(false)
+  processingError String?
+  
+  // Version Control
+  version         Int         @default(1)
+  parentFileId    String?
+  parentFile      ProjectFile? @relation("FileVersions", fields: [parentFileId], references: [id])
+  childFiles      ProjectFile[] @relation("FileVersions")
+  
+  // Access Control
+  isPublic        Boolean     @default(false)
+  accessLevel     AccessLevel @default(PRIVATE)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@map("project_files")
+}
+
+// Email System
+model EmailTemplate {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  subject     String
+  htmlBody    String           @db.Text
+  textBody    String?          @db.Text
+  type        EmailType
+  variables   String[]         // JSON array of variable names
+  isActive    Boolean          @default(true)
+  
+  emails      EmailLog[]
+  
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  @@map("email_templates")
+}
+
+model EmailLog {
+  id          String        @id @default(cuid())
+  templateId  String?
+  template    EmailTemplate? @relation(fields: [templateId], references: [id])
+  
+  // Email Details
+  toEmail     String
+  fromEmail   String
+  subject     String
+  htmlBody    String?       @db.Text
+  textBody    String?       @db.Text
+  
+  // Status
+  status      EmailStatus   @default(PENDING)
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  
+  // Error Handling
+  errorMessage String?
+  retryCount   Int          @default(0)
+  maxRetries   Int          @default(3)
+  
+  // Metadata
+  metadata    Json?
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@map("email_logs")
+}
+
+// LP Generation System
+model LandingPageTemplate {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?  @db.Text
+  category        LPCategory
+  industry        String[]
+  
+  // Template Structure
+  sections        Json     // Predefined sections configuration
+  designSettings  Json     // Color schemes, fonts, layouts
+  components      Json     // Available components
+  
+  // Usage Analytics
+  usageCount      Int      @default(0)
+  conversionRate  Float?   @default(0)
+  rating          Float?   @default(0)
+  
+  // Template Status
+  isActive        Boolean  @default(true)
+  isPremium       Boolean  @default(false)
+  tags            String[]
+  
+  // Generated Pages
+  landingPages    LandingPage[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("landing_page_templates")
+}
+
+model LandingPage {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  templateId      String?
+  template        LandingPageTemplate? @relation(fields: [templateId], references: [id])
+  
+  // Page Configuration
+  title           String
+  slug            String   @unique
+  metaDescription String?  @db.Text
+  keywords        String[]
+  
+  // Content Structure
+  heroSection     Json     // Hero section configuration
+  contentSections Json     // All page sections
+  ctaElements     Json     // Call-to-action elements
+  formElements    Json     // Lead capture forms
+  
+  // Design Configuration
+  colorScheme     Json     // Primary, secondary, accent colors
+  typography      Json     // Font families, sizes
+  layout          Json     // Grid, spacing, responsive settings
+  
+  // Business Logic
+  targetAudience  String?  @db.Text
+  valueProposition String? @db.Text
+  conversionGoal  String?
+  
+  // Performance Analytics
+  views           Int      @default(0)
+  uniqueViews     Int      @default(0)
+  conversions     Int      @default(0)
+  conversionRate  Float    @default(0)
+  bounceRate      Float    @default(0)
+  avgSessionTime  Int      @default(0) // seconds
+  
+  // A/B Testing
+  isTestVariant   Boolean  @default(false)
+  parentPageId    String?
+  parentPage      LandingPage? @relation("ABTest", fields: [parentPageId], references: [id])
+  variants        LandingPage[] @relation("ABTest")
+  
+  // Publication Status
+  status          LPStatus @default(DRAFT)
+  publishedAt     DateTime?
+  lastPublishedAt DateTime?
+  
+  // SEO and Social
+  ogImage         String?
+  ogTitle         String?
+  ogDescription   String?  @db.Text
+  twitterCard     String?
+  
+  // Analytics Events
+  analyticsEvents AnalyticsEvent[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("landing_pages")
+}
+
+model AnalyticsEvent {
+  id              String      @id @default(cuid())
+  landingPageId   String?
+  landingPage     LandingPage? @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  
+  // Event Details
+  eventType       EventType
+  eventName       String
+  eventData       Json?
+  
+  // User Context
+  sessionId       String
+  userId          String?
+  ipAddress       String?
+  userAgent       String?
+  referrer        String?
+  
+  // Geographic Data
+  country         String?
+  region          String?
+  city            String?
+  
+  // Device Information
+  deviceType      String?     // mobile, desktop, tablet
+  browser         String?
+  os              String?
+  screenSize      String?
+  
+  // Conversion Tracking
+  conversionValue Float?
+  conversionType  String?
+  funnelStep      Int?
+  
+  timestamp       DateTime    @default(now())
+  
+  @@map("analytics_events")
+}
+
+model AssetLibrary {
+  id              String      @id @default(cuid())
+  name            String
+  description     String?     @db.Text
+  category        AssetCategory
+  subcategory     String?
+  
+  // Asset Details
+  fileType        FileType
+  filename        String
+  originalName    String
+  mimeType        String
+  size            Int         // bytes
+  path            String
+  url             String?
+  
+  // Image-specific
+  width           Int?
+  height          Int?
+  format          String?
+  dominantColors  String[]    // Hex color codes
+  
+  // Usage Rights
+  license         String?
+  attribution     String?
+  isPremium       Boolean     @default(false)
+  
+  // Metadata
+  tags            String[]
+  keywords        String[]
+  aiGenerated     Boolean     @default(false)
+  
+  // Usage Analytics
+  downloadCount   Int         @default(0)
+  usageCount      Int         @default(0)
+  
+  // Organization
+  collections     AssetCollection[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@map("asset_library")
+}
+
+model AssetCollection {
+  id              String      @id @default(cuid())
+  name            String
+  description     String?     @db.Text
+  isPublic        Boolean     @default(false)
+  
+  // Assets relationship
+  assets          AssetLibrary[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@map("asset_collections")
+}
+
+// System Configuration and Settings
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  type        ConfigType
+  description String?
+  isEditable  Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_config")
+}
+
+// Audit Log for System Events
+model AuditLog {
+  id          String     @id @default(cuid())
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime   @default(now())
+  
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  CLIENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum BusinessType {
+  STARTUP
+  SMALL_BUSINESS
+  MEDIUM_BUSINESS
+  ENTERPRISE
+  NON_PROFIT
+  GOVERNMENT
+  OTHER
+}
+
+enum ProjectType {
+  WEBSITE
+  MOBILE_APP
+  WEB_APP
+  ECOMMERCE
+  LANDING_PAGE
+  SALES_PAGE
+  SQUEEZE_PAGE
+  PRODUCT_LAUNCH
+  EVENT_PAGE
+  LEAD_GENERATION
+  BRANDING
+  MARKETING
+  CONSULTATION
+  MAINTENANCE
+  OTHER
+}
+
+enum ProjectStatus {
+  PENDING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum FileType {
+  IMAGE
+  DOCUMENT
+  VIDEO
+  AUDIO
+  ARCHIVE
+  OTHER
+}
+
+enum AccessLevel {
+  PRIVATE
+  INTERNAL
+  PUBLIC
+}
+
+enum EmailType {
+  WELCOME
+  CONFIRMATION
+  NOTIFICATION
+  REMINDER
+  MARKETING
+  SYSTEM
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+enum ConfigType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  TEXT
+}
+
+enum LPCategory {
+  SALES
+  LEAD_GENERATION
+  PRODUCT_LAUNCH
+  EVENT
+  WEBINAR
+  DOWNLOAD
+  SIGNUP
+  ECOMMERCE
+  PORTFOLIO
+  CORPORATE
+  BLOG
+  PERSONAL
+}
+
+enum LPStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+  TESTING
+}
+
+enum EventType {
+  PAGE_VIEW
+  CLICK
+  FORM_SUBMIT
+  SCROLL
+  TIME_ON_PAGE
+  CONVERSION
+  BOUNCE
+  DOWNLOAD
+  VIDEO_PLAY
+  SOCIAL_SHARE
+}
+
+enum AssetCategory {
+  IMAGES
+  ICONS
+  ILLUSTRATIONS
+  BACKGROUNDS
+  TEMPLATES
+  FONTS
+  VIDEOS
+  AUDIO
+  DOCUMENTS
+  GRAPHICS
+}

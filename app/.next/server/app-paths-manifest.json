@@ -1,0 +1,8 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/client/submit/route": "app/api/client/submit/route.js",
+  "/page": "app/page.js",
+  "/client-request/page": "app/client-request/page.js",
+  "/lp-wizard/[clientId]/page": "app/lp-wizard/[clientId]/page.js",
+  "/admin/projects/page": "app/admin/projects/page.js"
+}
