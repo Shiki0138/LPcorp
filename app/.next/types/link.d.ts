@@ -31,13 +31,14 @@ declare namespace __next_route_internal_types__ {
   type StaticRoutes = 
     | `/`
     | `/admin/projects`
-    | `/api/client/submit`
+    | `/api/analytics/heatmap`
     | `/api/images/unsplash`
     | `/api/lp/generate`
-    | `/api/analytics/heatmap`
     | `/api/reports/generate`
-    | `/client-request`
+    | `/api/client/submit`
     | `/dashboard`
+    | `/client-request`
+    | `/lp-wizard/demo`
   type DynamicRoutes<T extends string = string> = 
     | `/lp-wizard/${SafeSlug<T>}`
 
