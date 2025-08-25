@@ -1,1 +1,7 @@
-{}
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/pricing/page": "app/pricing/page.js",
+  "/quote/page": "app/quote/page.js",
+  "/lp-wizard/demo/page": "app/lp-wizard/demo/page.js",
+  "/services/continuous/page": "app/services/continuous/page.js"
+}
